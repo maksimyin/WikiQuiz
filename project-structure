@@ -1,0 +1,27 @@
+popup:
+highlight button to highlight text to ask AI
+specific guidelines and prompts like "provide the information to me like a tenth grader"
+list the page structure from the initial load from the wiki API
+    click on specific sections to access summaries and quizes
+
+content scripts:
+make sure the page is ONLY Wikipidia
+make sure initial load and Wikipidia API information gets stored and passed into popup
+send necessary information to background script for Wiki API
+on selection (highlight) you want to scrape that section and meaningful information around it and send it to the background script -> ask AI
+
+background script:
+fetch data from Wikipedia Api given content script information
+take any requests from popop + content scripts
+    ask AI
+    return relevant information to popup
+the "hive mind"
+store information in chrome.storage.session
+    https://developer.chrome.com/docs/extensions/reference/api/storage
+
+Options Page:
+edit settings
+CREATE ONE
+
+* potentially implement temporary history system
+

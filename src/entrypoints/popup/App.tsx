@@ -1,30 +1,43 @@
-import { useState } from 'react';
-import reactLogo from '../..//assets/react.svg';
+import { useState, useEffect } from 'react';
 import './App.css';
 
 
 function App() {
-  const [count, setCount] = useState(0);
+  // for now until ai quizes are implemented
+
+  const [sections, setSections] = useState<any[]>([]);
+  const [title, setTitle] = useState<string>("");
+  const [description, setDescription] = useState<string>("");
+  const [extract, setExtract] = useState<string>("");
+  async function fetchPageData(){
+   const response = await browser.runtime.sendMessage({
+    type: 'fetchPageData',
+    payload: {
+      sections: true,
+      title: true,
+      description: true,
+      extract: true
+    }
+   });
+   if (response.success) {
+    setSections(response.sections);
+    setTitle(response.title);
+    setDescription(response.description);
+    setExtract(response.extract);
+   }
+  }
+  useEffect(() => {
+    fetchPageData();
+  }, []);
 
   return (
     <>
-      <div>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>WXT + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the WXT and React logos to learn more
-      </p>
+      <h1>{title}</h1>
+      <p>{description}</p>
+      <p>{extract}</p>
+      {sections.map((section, index) => (
+        <p key={index}>{section.line}</p>
+      ))}
     </>
   );
 }
