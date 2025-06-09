@@ -1,17 +1,8 @@
+
 export default defineBackground(() => {
 
   type PayloadMap =  {
-    initialization: undefined,
-    storePageContent: {
-      title: string,
-      //list more when we finish functionality
-    },
-    fetchPageData: {
-      title?: boolean,
-      description?: boolean,
-      extract?: boolean,
-      sections?: boolean
-    }
+    initialization: undefined
   } // add more when we shape more payloads
 
   type ResponseData = Record<string, string | number | boolean>;
@@ -24,49 +15,6 @@ export default defineBackground(() => {
   } = {
     initialization: (payload, sendResponse) => {
       sendResponse({"success": true})
-    },
-    storePageContent: (payload, sendResponse) => {
-      const fetchAllData = async () => {
-        try {
-          const [summaryResponse, sectionsResponse] = await Promise.all([
-            fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(payload.title)}`),
-            fetch(`https://en.wikipedia.org/w/api.php?origin=*&format=json&action=parse&page=${encodeURIComponent(payload.title)}&prop=sections`)
-          ]);
-          
-          const [summaryData, sectionsData] = await Promise.all([
-            summaryResponse.json(),
-            sectionsResponse.json()
-          ]);
-
-          await browser.storage.session.set({
-            title: summaryData.title,
-            description: summaryData.description,
-            extract: summaryData.extract,
-            sections: sectionsData.parse?.sections
-          });
-          console.log(sectionsData)
-
-          sendResponse({"success": true, "received": payload.title});
-        } catch (error) {
-          console.error('Error fetching wiki data:', error);
-          sendResponse({"success": false, "error": "Failed to fetch wiki data"});
-        }
-      };
-
-      fetchAllData();
-      return true;
-    },
-    fetchPageData: (payload, sendResponse) => {
-      const fetchSectionData = async () => {
-        let response: Record<string, any[] | string> = {};
-        for (const k of Object.keys(payload)) {
-          const data = await browser.storage.session.get(k);
-          response[k] = data[k];
-        }
-        sendResponse({"success": true, ...response});
-      }
-      fetchSectionData();
-      return true;
     }
   }
 
@@ -91,5 +39,77 @@ export default defineBackground(() => {
       return false
     }
   });
-});
 
+  browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+   if (changeInfo.status === "complete") {
+    handlePageUpdate(tab);
+   }
+  });
+
+  browser.tabs.onActivated.addListener(async (activeInfo) => {
+    const tab = await browser.tabs.get(activeInfo.tabId);
+    handlePageUpdate(tab);
+  })
+
+  // helper functions to handle new tab and fetch data from Wikipedia REST and ACTION API
+
+  let lastProcessedUrl = "";
+  const handlePageUpdate = async (tab: Browser.tabs.Tab) => {
+    if (!tab.url || tab.status !== "complete") {
+      return;
+    }
+
+    if (!tab.url.includes("wikipedia.org/wiki/")) {
+      return;
+    }
+
+    if (tab.url === lastProcessedUrl) {
+      return;
+    }
+
+    lastProcessedUrl = tab.url;
+    const title = decodeURIComponent(new URL(tab.url).pathname.replace("/wiki/", ""));
+    await fetchAllData(title, tab);
+  }
+
+  const fetchAllData = async (title: string, tab: Browser.tabs.Tab) => {
+    try {
+      const currentUrl = tab.url;
+      const storageKeys = [`title_${currentUrl}`, `description_${currentUrl}`, `extract_${currentUrl}`, `sections_${currentUrl}`, `metadata_${currentUrl}`];
+      const existingData = await browser.storage.session.get(storageKeys);
+      
+      if (existingData[`title_${currentUrl}`] && existingData[`sections_${currentUrl}`]) {
+        return;
+      }
+
+      const [summaryResponse, sectionsResponse] = await Promise.all([
+        fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`),
+        fetch(`https://en.wikipedia.org/w/api.php?origin=*&format=json&action=parse&page=${encodeURIComponent(title)}&prop=sections`)
+      ]);
+      
+      const [summaryData, sectionsData] = await Promise.all([
+        summaryResponse.json(),
+        sectionsResponse.json()
+      ]);
+
+      const timeStamp = Date.now();
+      console.log(currentUrl, timeStamp)
+
+  
+      await browser.storage.session.set({
+        [`title_${currentUrl}`]: summaryData.title,
+        [`description_${currentUrl}`]: summaryData.description,
+        [`extract_${currentUrl}`]: summaryData.extract,
+        [`sections_${currentUrl}`]: sectionsData.parse?.sections,
+        [`metadata_${currentUrl}`]: {
+          timestamp: timeStamp,
+          url: currentUrl,
+          title: summaryData.title
+        }
+      });
+  
+    } catch (error) {
+      console.error('Error fetching wiki data:', error);
+    }
+  };
+});

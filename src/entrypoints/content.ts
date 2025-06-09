@@ -8,14 +8,9 @@ export default defineContentScript({
     const response = await browser.runtime.sendMessage({
       type: 'initialization'
     });
-    if (response.success && decodeURIComponent(location.pathname.replace('/wiki/', '')) !== "/") {
-      const storePageContent = await browser.runtime.sendMessage({
-        type: 'storePageContent',
-        payload: {
-          "title": decodeURIComponent(location.pathname.replace('/wiki/', ''))
-        }
-      });
-      //highlight -> Page Section
+    if (!response.success) {
+      console.error("Failed to initialize connection with background script");
+      return;
     }
   }
 });
