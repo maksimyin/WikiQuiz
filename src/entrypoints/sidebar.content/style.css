@@ -1,0 +1,17 @@
+/*
+  The <wxt-root> element is now positioned by page-style.ts.
+  The #wiki-ai-root element just needs to fill its parent so the
+  sidebar within it can take up the full height.
+*/
+#wiki-ai-root {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 360px;
+    height: 100%;
+    z-index: 9999;
+    border-left: 1px solid #e0e0e0;
+    background-color: #f9f9f9;
+    display: flex;
+    flex-direction: column;
+}

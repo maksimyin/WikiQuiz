@@ -34,6 +34,15 @@ function App() {
     }
   }
 
+  //Settings toggle sidebar (turn into toggle button)
+
+  const handleToggleSidebar = async () => {
+    const currentWindow = await browser.windows.getCurrent();
+    if (currentWindow.id) {
+      await browser.sidePanel.open({ windowId: currentWindow.id });
+    }
+  };
+
 
   useEffect(() => {
     loadDataFromStorage();
@@ -44,6 +53,10 @@ function App() {
   // styling focus tomorrow
   return (
     <>
+      <button onClick={handleToggleSidebar}>
+        Toggle Sidebar
+      </button>
+      <hr></hr>
       <h1>{title}</h1>
       <p>{description}</p>
       <hr></hr>

@@ -6,6 +6,6 @@ export default defineConfig({
   srcDir: 'src',
   manifest: {
     permissions: ['tabs', 'scripting', 'storage'],
-    host_permissions: ["https://*.wikipedia.org/*"],
+    host_permissions: ['*://*.wikipedia.org/wiki/*'],
   }
 });

@@ -1,8 +1,10 @@
-
 export default defineBackground(() => {
 
   type PayloadMap =  {
-    initialization: undefined
+    initialization: undefined,
+    getData: {
+      url: string
+    }
   } // add more when we shape more payloads
 
   type ResponseData = Record<string, string | number | boolean>;
@@ -15,6 +17,36 @@ export default defineBackground(() => {
   } = {
     initialization: (payload, sendResponse) => {
       sendResponse({"success": true})
+    },
+    getData: async (payload, sendResponse) => {
+      const { url } = payload;
+      const storageKeys = [`title_${url}`, `description_${url}`, `extract_${url}`, `sections_${url}`, `metadata_${url}`];
+      let data = await browser.storage.session.get(storageKeys);
+      console.log(url, storageKeys, data);
+
+      // If no data or data is outdated, fetch it
+      if (!data[`title_${url}`] || 
+          !data[`sections_${url}`] || 
+          !data[`metadata_${url}`]?.timestamp ||
+          Date.now() - data[`metadata_${url}`].timestamp >= 1000 * 60 * 60) {
+        
+        const title = decodeURIComponent(new URL(url).pathname.replace("/wiki/", ""));
+        const fetched = await fetchAllData(title, url);
+        if (fetched) {
+          // Get the fresh data
+          data = await browser.storage.session.get(storageKeys);
+        }
+      }
+
+      // Format the response data
+      const formattedData: any = {};
+      for (const key in data) {
+        // remove _${url} from key
+        const newKey = key.replace(`_${url}`, "");
+        formattedData[newKey] = data[key];
+      }
+      
+      sendResponse(formattedData);
     }
   }
 
@@ -33,53 +65,48 @@ export default defineBackground(() => {
     const handler = handlers[message.type]
     if (handler) {
       const typedHandler = handler as Handler<PayloadMap[typeof message.type]>
-      return typedHandler(message.payload, sendResponse)
+      typedHandler(message.payload, sendResponse)
+      return true;
     } else {
       sendResponse({"reply": "This isn't a valid command"})
       return false
     }
   });
 
-  browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-   if (changeInfo.status === "complete") {
-    handlePageUpdate(tab);
-   }
-  });
-
-  browser.tabs.onActivated.addListener(async (activeInfo) => {
-    const tab = await browser.tabs.get(activeInfo.tabId);
-    handlePageUpdate(tab);
-  })
-
-  // helper functions to handle new tab and fetch data from Wikipedia REST and ACTION API
 
   let lastProcessedUrl = "";
-  const handlePageUpdate = async (tab: Browser.tabs.Tab) => {
-    if (!tab.url || tab.status !== "complete") {
+  let isProcessing = false;  
+
+  const handlePageUpdate = async (url: string) => {
+    if (!url || !url.includes("wikipedia.org/wiki/") || url === lastProcessedUrl || isProcessing) {
       return;
     }
 
-    if (!tab.url.includes("wikipedia.org/wiki/")) {
-      return;
+    isProcessing = true;
+    try {
+      lastProcessedUrl = url;
+      const title = decodeURIComponent(new URL(url).pathname.replace("/wiki/", ""));
+      console.log("fetching data", title, url);
+      const fetched = await fetchAllData(title, url);
+      console.log("fetched", fetched);
+    } finally {
+      isProcessing = false;
     }
-
-    if (tab.url === lastProcessedUrl) {
-      return;
-    }
-
-    lastProcessedUrl = tab.url;
-    const title = decodeURIComponent(new URL(tab.url).pathname.replace("/wiki/", ""));
-    await fetchAllData(title, tab);
   }
 
-  const fetchAllData = async (title: string, tab: Browser.tabs.Tab) => {
+  const fetchAllData = async (title: string, currentUrl: string) => {
     try {
-      const currentUrl = tab.url;
+      console.log("fetching data", title);
       const storageKeys = [`title_${currentUrl}`, `description_${currentUrl}`, `extract_${currentUrl}`, `sections_${currentUrl}`, `metadata_${currentUrl}`];
       const existingData = await browser.storage.session.get(storageKeys);
       
-      if (existingData[`title_${currentUrl}`] && existingData[`sections_${currentUrl}`]) {
-        return;
+      // If data exists and is fresh (less than 1 hour old)
+      if (existingData[`title_${currentUrl}`] && 
+          existingData[`sections_${currentUrl}`] && 
+          existingData[`metadata_${currentUrl}`]?.timestamp && 
+          Date.now() - existingData[`metadata_${currentUrl}`].timestamp < 1000 * 60 * 60) {
+        console.log("using existing data", currentUrl);
+        return true;
       }
 
       const [summaryResponse, sectionsResponse] = await Promise.all([
@@ -93,9 +120,7 @@ export default defineBackground(() => {
       ]);
 
       const timeStamp = Date.now();
-      console.log(currentUrl, timeStamp)
 
-  
       await browser.storage.session.set({
         [`title_${currentUrl}`]: summaryData.title,
         [`description_${currentUrl}`]: summaryData.description,
@@ -107,9 +132,29 @@ export default defineBackground(() => {
           title: summaryData.title
         }
       });
-  
+      console.log("data saved", currentUrl);
+      return true;
+
     } catch (error) {
       console.error('Error fetching wiki data:', error);
+      return false;
     }
   };
+
+  browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    // Only process when the page is fully loaded and has a URL
+    if (changeInfo.status === "complete" && tab.url?.includes("wikipedia.org/wiki/")) {
+      console.log("onUpdated", tab.url);
+      handlePageUpdate(tab.url);
+    }
+  });
+
+  browser.tabs.onActivated.addListener(async (activeInfo) => {  
+    const tab = await browser.tabs.get(activeInfo.tabId);
+    if (tab.url?.includes("wikipedia.org/wiki/")) {
+      console.log("onActivated", tab.url);
+      handlePageUpdate(tab.url);
+    }
+  });
+
 });
