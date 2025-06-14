@@ -14,6 +14,7 @@ const getStyleSheet = () => `
       padding-right: ${SIDEBAR_WIDTH_PX}px !important;
       box-sizing: border-box !important;
       transition: padding-right 0.2s ease-in-out !important;
+      overflow-x: hidden !important; /* Prevent horizontal scroll */
     }
 
     /*
@@ -28,7 +29,13 @@ const getStyleSheet = () => `
       width: ${SIDEBAR_WIDTH_PX}px !important;
       z-index: 2147483647 !important; /* Use max z-index to appear on top */
       display: block !important;
-      overflow-y: auto; /* Allow sidebar to scroll internally */
+      pointer-events: auto !important; /* Ensure it captures mouse events */
+      isolation: isolate !important; /* Create new stacking context */
+    }
+
+    /* Prevent main page scroll when hovering over sidebar */
+    wxt-root:hover ~ * {
+      pointer-events: none !important;
     }
   }
 
