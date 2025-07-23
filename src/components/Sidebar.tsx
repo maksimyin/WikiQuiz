@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import './Sidebar.css';
+import { IoMdArrowBack } from "react-icons/io";
+import { LuBrain } from "react-icons/lu";
+import { IoDocumentTextOutline } from "react-icons/io5";
+
+
 
 const Sidebar = () => {
   const [sections, setSections] = useState<any[]>([]);
@@ -9,11 +14,15 @@ const Sidebar = () => {
   const [isLoading, setIsLoading] = useState(true);
   type QuizMode = {
     quizGeneration: boolean;
+    quizType: "general_knowledge" | "text_specific" | undefined;
     clickedElement: string | undefined; // summary, section-0, section-1, etc.
+    section_index: number | undefined;
   }
   const [quizMode, setQuizMode] = useState<QuizMode>({
     quizGeneration: false,
-    clickedElement: undefined
+    quizType: undefined,
+    clickedElement: undefined,
+    section_index: undefined
   });
 
 
@@ -81,6 +90,39 @@ const Sidebar = () => {
     };
   }, []);
 
+  useEffect(() => {
+    async function getQuizContent() {
+      let summary_chopped: Record<number, string> = {};
+      if (quizMode.quizGeneration) {
+        if (quizMode.clickedElement === "summary") {
+          let summary = extract;
+          if (summary) {
+
+            // later consider adding checking for abbreviations. Shjould work fine for now
+            const abbreviations = [
+              "Mr", "Mrs", "Ms", "Dr", "Prof", "Sr", "Jr", "St", "Mt", "Lt", "Col", "Gen", "Rep", "Sen", "Gov", "Capt", "Sgt"
+            ];
+            const sentences = summary.match(
+              /(?=[^])(?:\P{Sentence_Terminal}|\p{Sentence_Terminal}(?!['"`\p{Close_Punctuation}\p{Final_Punctuation}\s]))*(?:\p{Sentence_Terminal}+['"`\p{Close_Punctuation}\p{Final_Punctuation}]*|$)/gu
+            ) || [summary];
+            sentences.forEach((sentence, idx) => {
+              summary_chopped[idx + 1] = sentence.trim();
+            });
+          }
+        }
+        const quizContent = await browser.runtime.sendMessage({
+          type: 'getQuizContent',
+          payload: {
+            topic: title,
+            bucket_a: quizMode.clickedElement === "summary" ? summary_chopped : quizMode.section_index,
+            quizType: quizMode.quizType
+          }
+        })
+      }
+  }
+  getQuizContent();
+  }, [quizMode]);
+
  
 
   if (isLoading) {
@@ -117,6 +159,14 @@ const Sidebar = () => {
         <header className="sidebar-header">
           {quizMode.clickedElement === "summary" ? (
             <div className="sidebar-section">
+            <IoMdArrowBack className="quiz-button back-arrow" onClick={() => {
+              setQuizMode({
+                quizGeneration: false,
+                quizType: undefined,
+                clickedElement: undefined,
+                section_index: undefined
+              })
+            }}/>
               <h1 className="section-title">General Overview</h1>
               <p className="section-content">{extract || "No general overview available."}</p>
               </div>
@@ -125,10 +175,22 @@ const Sidebar = () => {
               {(() => {
                 const index = quizMode.clickedElement?.split("-")[1];
                 if (index === undefined) return null;
+                
+                const section = sections.find(s => s.index === index);
+                if (!section) return null;
+                
                 return (
                   <>
-                    <h1 className="section-title">{sections[Number(index)].title || `Section ${index}`}</h1>
-                    <p className="section-content">{sections[Number(index)].line || ""}</p>
+                  <IoMdArrowBack className="quiz-button back-arrow" onClick={() => {
+              setQuizMode({
+                quizGeneration: false,
+                quizType: undefined,
+                clickedElement: undefined,
+                section_index: undefined
+              })
+            }}/>
+                    <h1 className="section-title">{`Section ${index}`}</h1>
+                    <p className="section-content">{section.line || ""}</p>
                   </>
                 );
               })()}
@@ -136,13 +198,7 @@ const Sidebar = () => {
           )}
         </header>
         <div className="sidebar-content">
-          <button className="quiz-button" onClick={() => {
-            setQuizMode({
-              quizGeneration: false,
-              clickedElement: undefined
-            })
-          }}>Back</button> {/* TODO: turn into back arrow */}
-          {/* TODO: generate quiz here */}
+
           <div>
           Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam ac sapien eu sapien dictum convallis. Morbi pretium nibh quis turpis mollis efficitur. Proin mattis justo quis mi ullamcorper, at pellentesque libero lobortis. Mauris a orci tempus, iaculis felis quis, lobortis dui. Donec bibendum metus et purus imperdiet, in hendrerit sem euismod. Donec tempor, mi a fermentum tincidunt, ligula ex lacinia augue, ac accumsan ipsum magna ut urna. Nunc at metus vitae tortor ornare dignissim.
 
@@ -176,17 +232,21 @@ Etiam in lacus non lectus fringilla lobortis non a libero. Duis vel tincidunt ve
             setQuizState(noHoverState)
           }}>
             {quizState.hoveringState && quizState.summary && (
+              <div className="quiz-button-container">
               <button 
                 className="quiz-button"
                 onClick={() => {
                   setQuizMode({
                     quizGeneration: true,
-                    clickedElement: "summary"
+                    quizType: undefined,
+                    clickedElement: "summary",
+                    section_index: undefined
                   })
                 }}
               >
                 Create Quiz
               </button>
+              </div>
             )}
             <h2 className="section-title">General Overview</h2>
             <p className="section-content">{extract || "No general overview available."}</p>
@@ -195,30 +255,52 @@ Etiam in lacus non lectus fringilla lobortis non a libero. Duis vel tincidunt ve
         
         {Array.isArray(sections) && sections.length > 0 ? (
           sections.map((section, index) => (
-            <div key={index} className="sidebar-section" id={`section-${index}`} onMouseEnter={() => {
+            <div key={section.index} className="sidebar-section" id={`section-${section.index}`}
+             style={{marginLeft: `${(section.toclevel - 1) * 15}px`}}
+             onMouseEnter={() => {
               setQuizState({
                 summary: false,
                 section: true,
-                section_index: index,
+                section_index: section.index,
                 hoveringState: true
               })
             }} onMouseLeave={() => {
               setQuizState(noHoverState)
             }}>
-              {quizState.hoveringState && quizState.section && quizState.section_index === index && (
-                <button 
-                  className="quiz-button"
-                  onClick={() => {
-                    setQuizMode({
-                      quizGeneration: true,
-                      clickedElement: `section-${index}`
-                    })
-                  }}
-                >
-                  Create Quiz
-                </button>
+              {quizState.hoveringState && quizState.section && quizState.section_index === section.index && (
+                <div className="quiz-button-container">
+                  <button 
+                    className="quiz-button"
+                    onClick={() => {
+                      setQuizMode({
+                        quizGeneration: true,
+                        quizType: "text_specific",
+                        clickedElement: `section-${section.index}`,
+                        section_index: Number(section.index)
+                      })
+                    }}
+                    title="Article + General Knowledge Quiz"
+                  >
+                    <LuBrain />
+                  </button>
+                  <button 
+                    className="quiz-button"
+                    onClick={() => {
+                      setQuizMode({
+                        quizGeneration: true,
+                        quizType: "general_knowledge",
+                        clickedElement: `section-${section.index}`,
+                        section_index: Number(section.index)
+                      })
+                    }}
+                    title="Article Specific Quiz"
+
+                  >
+                    <IoDocumentTextOutline />
+                  </button>
+                </div>
               )}
-              <h2 className="section-title">{section.title || `Section ${index + 1}`}</h2>
+              <h2 className="section-title">{`Section ${section.index}`}</h2>
               <p className="section-content">{section.line || ""}</p>
             </div>
           ))
