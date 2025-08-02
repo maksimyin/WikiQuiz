@@ -1,18 +1,70 @@
+/* Floating Toggle Button */
+.sidebar-toggle-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #3498db;
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+  transition: all 0.3s ease;
+  z-index: 1000;
+  pointer-events: auto;
+}
+
+.sidebar-toggle-button:hover {
+  background: #2980b9;
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+}
+
+.sidebar-toggle-button.expanded {
+  background: #e74c3c;
+}
+
+.sidebar-toggle-button.expanded:hover {
+  background: #c0392b;
+}
+
 /* Modern Sidebar Styles */
 .sidebar-container {
   display: flex;
   flex-direction: column;
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 320px;
   height: 100vh;
   background: #ffffff;
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.08);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; /* something to edit before production */
-  position: relative;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   overflow: hidden;
   margin: 0;
   padding: 0;
-  top: 0;
   pointer-events: auto;
   touch-action: pan-y;
+  transform: translateX(0);
+  transition: transform 0.3s ease, width 0.3s ease;
+  z-index: 999;
+}
+
+.sidebar-container.collapsed {
+  transform: translateX(100%);
+}
+
+/* Smaller screens: reduce sidebar width */
+@media (max-width: 780px) {
+  .sidebar-container {
+    width: 250px;
+  }
 }
 
 
@@ -82,7 +134,7 @@
   font-size: 1.1rem;
   font-weight: 500;
   color: #2c3e50;
-  margin: 0 0 0.75rem 0;
+  margin: 0.2rem 0 0.5rem 0;
   padding-right: 100px;
 }
 
@@ -140,6 +192,24 @@
 
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
+  .sidebar-toggle-button {
+    background: #2c3e50;
+    box-shadow: 0 4px 12px rgba(44, 62, 80, 0.3);
+  }
+
+  .sidebar-toggle-button:hover {
+    background: #34495e;
+    box-shadow: 0 6px 20px rgba(44, 62, 80, 0.4);
+  }
+
+  .sidebar-toggle-button.expanded {
+    background: #e74c3c;
+  }
+
+  .sidebar-toggle-button.expanded:hover {
+    background: #c0392b;
+  }
+
   .sidebar-container {
     background: #1a1a1a;
     box-shadow: -4px 0 24px rgba(0, 0, 0, 0.2);

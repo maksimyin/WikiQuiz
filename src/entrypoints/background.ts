@@ -1,7 +1,7 @@
 import { convert } from 'html-to-text';
+import * as prompts from '../utils/prompts';
 
 export default defineBackground(() => {
-  let currentUrl = '';  
 
   type PayloadMap =  {
     initialization: undefined,
@@ -11,8 +11,11 @@ export default defineBackground(() => {
     getQuizContent: {
       topic: string,
       bucket_a: Record<number, string> | number,
-      quizType: "general_knowledge" | "text_specific"
-    }
+      quizType: "general_knowledge" | "text_specific",
+      url: string
+    },
+    toggleSidebar: "local" | "session",
+    getSidebarState: "local" | "session"
   } // add more when we shape more payloads
 
   type ResponseData = Record<string, string | number | boolean>;
@@ -27,7 +30,8 @@ export default defineBackground(() => {
       sendResponse({"success": true})
     },
     getData: async (payload, sendResponse) => {
-      const { url } = payload;
+      let { url } = payload;
+      url = url.match(idRegex)?.[0] || url;
       const storageKeys = [`title_${url}`, `description_${url}`, `extract_${url}`, `sections_${url}`, `metadata_${url}`];
       let data = await browser.storage.session.get(storageKeys);
 
@@ -55,10 +59,12 @@ export default defineBackground(() => {
       
       sendResponse(formattedData);
     },
-    getQuizContent: async (payload, sendResponse) => {
-      const { topic, bucket_a, quizType } = payload;
+    // fix return type when ai thing finished
+    getQuizContent: async (payload, sendResponse): Promise< void | boolean> => {
+      const { topic, bucket_a, quizType, url } = payload;
+      console.log("bucket_a", bucket_a);
       if (typeof(bucket_a) === "number") {
-        const sectionContent = await getSectionContent(topic, bucket_a);
+        const sectionContent = await getSectionContent(topic, bucket_a, url);
         if (sectionContent && sectionContent.includes("No content available")) {
           sendResponse({"reply": sectionContent})
           return false
@@ -73,9 +79,28 @@ export default defineBackground(() => {
           console.log("section_chopped", section_chopped);
           // sendAIChat(section_chopped, quizType);
         }
+      } else if (typeof(bucket_a) === "object") {
+        const summaryContent = bucket_a
+        if (summaryContent) {
+          sendResponse({"reply": "Found summary content"})
+          return false
+        } else {
+          sendResponse({"reply": "No content available"})
+          return false
+        }
       }
-      // case for summary 
       // Return as sendResponse to Sidebar and implement quiz generation there
+    },
+    toggleSidebar: (payload, sendResponse): void => {
+      toggleSidebar(payload).then((enabled) => {
+        console.log("enabled", enabled);
+        sendResponse({"sidebarEnabled": enabled})
+      })
+    },
+    getSidebarState: (payload, sendResponse): void => {
+      getSidebarState(payload).then((enabled) => {
+        sendResponse({"sidebarEnabled": enabled})
+      })
     }
   }
 
@@ -102,32 +127,160 @@ export default defineBackground(() => {
     }
   });
 
+  interface Action_Api_Response {
+    parse: {
+      text: {
+        "*": string
+      },
+      title: string,
+    }
+  }
+  interface WikiSection {
+    anchor: string,
+    fromtitle: string,
+    index: number,
+    level: number,
+    line: string,
+    number: number,
+    toclevel: number,
+  }
+
+  interface StorageMetadata {
+    timestamp: number;
+    url: string;
+    title: string;
+  }
+
+  interface RequestQueue {
+    [key: string]: {
+      timestamp: number;
+    };
+  }
+
+  type SummaryData = {
+    title: string;
+    description?: string;
+    extract?: string;
+    [key: string]: any;
+  };
+
+  type SectionsData = {
+    parse?: {
+      sections?: WikiSection[];
+      title?: string;
+      pageid?: number;
+    };
+  };
+
+  interface Section_Api_Response extends Action_Api_Response {
+    parse: {
+      pageid: number,
+      text: { "*": string },
+      title: string
+    }
+  }
 
   let lastProcessedUrl = "";
-  let isProcessing = false;  
+  let isProcessing = false;
+  const idRegex = /^(https:\/\/en\.wikipedia\.org\/wiki\/[^#]+)/;
+
+
+  const requestQueue: RequestQueue = {};
+  const MIN_REQUEST_INTERVAL = 1000; 
 
   // TODO: Use utils functions to send section/summary to Cohere
   const sendAIChat = async () => {
     return null;
   }
 
-  const getSectionContent = async (topic: string, section_index: number) => {
-    console.log("getting section content", topic, section_index);
+  const toggleSidebar = async (payload: "local" | "session") => {
+    const result = await browser.storage[payload].get("sidebarEnabled");
+    const currentState: boolean = result.sidebarEnabled ?? false; // Default to false if undefined
+    const newState = !currentState;
+    await browser.storage[payload].set({sidebarEnabled: newState});
+    console.log(`Sidebar toggled: ${currentState} -> ${newState}`);
+    return newState;
+  }
+
+  const getSidebarState = async (payload: "local" | "session") => {
+    const result = await browser.storage[payload].get("sidebarEnabled");
+    const currentState: boolean = result.sidebarEnabled ?? false; // Default to false if undefined
+    console.log(`Sidebar state retrieved: ${currentState}`);
+    return currentState;
+  }
+
+  const makeWikipediaRequest = async (url: string) => {
+    const now = Date.now();
+    
+    Object.keys(requestQueue).forEach(key => {
+      if (now - requestQueue[key].timestamp > 60000) { 
+        delete requestQueue[key];
+      }
+    });
+
+    const lastRequest = Object.values(requestQueue).reduce((latest, current) => 
+      current.timestamp > latest ? current.timestamp : latest, 0);
+    
+    if (now - lastRequest < MIN_REQUEST_INTERVAL) {
+      await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL - (now - lastRequest)));
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     try {
-      // Get sections data to find subsection titles
-      const storageKeys = [`sections_${currentUrl}`];
-      const sectionsData = await browser.storage.session.get(storageKeys);
-      const sections = sectionsData[`sections_${currentUrl}`] || [];
+      const requestId = `${url}_${now}`;
+      requestQueue[requestId] = {
+        timestamp: now
+      };
 
-      const sectionHTML = await fetch(`https://en.wikipedia.org/w/api.php?origin=*&format=json&action=parse&page=${encodeURIComponent(topic)}&prop=text&section=${section_index}`)
-      const sectionHTMLData = await sectionHTML.json();
-      // fix text problems
-      const sectionText = convert(sectionHTMLData.parse?.text["*"], {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'WikiChromeAI/1.0 (https://github.com/BostonCelticFanCoder/WikiChromeAI; yinmaksim@gmail.com) Chrome Extension',
+          'Api-User-Agent': 'WikiChromeAI/1.0 (https://github.com/BostonCelticFanCoder/WikiChromeAI; yinmaksim@gmail.com)'
+        }
+      });
+      clearTimeout(timeoutId);
+      return response;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
+  const getSectionContent = async (topic: string, section_index: number, pageUrl: string): Promise<string | null> => {
+    try {
+      pageUrl = pageUrl.match(idRegex)?.[0] || pageUrl;
+      console.log("pageUrl", pageUrl);
+      const storageKeys = [`sections_${pageUrl}`];
+      const sectionsData = await browser.storage.session.get(storageKeys);
+      const sections: WikiSection[] = sectionsData[`sections_${pageUrl}`] || [];
+      console.log("sections", sections);
+      
+      const currentSection = sections.find((s: WikiSection) => Number(s.index) === Number(section_index));
+      if (!currentSection) {
+        console.error("Section not found in stored sections");
+        return null;
+      }
+
+      const api_url = `https://en.wikipedia.org/w/api.php?origin=*&format=json&action=parse&page=${encodeURIComponent(topic)}&prop=text&section=${section_index}`;
+      
+      const sectionHTML = await makeWikipediaRequest(api_url);
+      if (!sectionHTML.ok) {
+        console.error("Wikipedia API request failed:", sectionHTML.status);
+        return null;
+      }
+
+      const sectionHTMLData: Section_Api_Response = await sectionHTML.json();
+      if (!sectionHTMLData.parse?.text["*"]) {
+        console.error("Invalid response from Wikipedia API");
+        return null;
+      }
+
+      const sectionText = convert(sectionHTMLData.parse.text["*"], {
         wordwrap: false,
         preserveNewlines: true,
         selectors: [
-          // Remove edit links, references, citations, and other unwanted elements
           { selector: '.mw-editsection', format: 'skip' },
           { selector: '.reference', format: 'skip' },
           { selector: '.error', format: 'skip' },
@@ -137,129 +290,141 @@ export default defineBackground(() => {
           { selector: '.infobox', format: 'skip' },
           { selector: '.hatnote', format: 'skip' },
           { selector: '.citation', format: 'skip' },
-          { selector: 'sup', format: 'skip' }, // Remove superscript citation numbers
+          { selector: 'sup', format: 'skip' },
           { selector: '.printfooter', format: 'skip' },
           { selector: '.catlinks', format: 'skip' },
-          { selector: '.thumbinner', format: 'skip' }, // Remove image containers
-          { selector: '.thumb', format: 'skip' }, // Remove thumbnails
-          { selector: '.thumbcaption', format: 'skip' }, // Remove image captions
-          { selector: '.caption', format: 'skip' }, // Remove captions
-          { selector: '.gallery', format: 'skip' }, // Remove galleries
-          { selector: 'img', format: 'skip' }, // Remove images
-          { selector: '.mw-references-wrap', format: 'skip' }, // Remove reference sections
-          // Additional selectors for image captions
-          { selector: 'figcaption', format: 'skip' }, // Remove figure captions
-          { selector: '.magnify', format: 'skip' }, // Remove magnify links in image captions
-          { selector: '.internal', format: 'skip' }, // Remove internal image links
-          { selector: '.image-caption', format: 'skip' }, // Remove explicit image captions
-          { selector: '.gallerytext', format: 'skip' }, // Remove gallery text/captions
-          // Handle links - keep text but remove the link
+          { selector: '.thumbinner', format: 'skip' },
+          { selector: '.thumb', format: 'skip' },
+          { selector: '.thumbcaption', format: 'skip' },
+          { selector: '.caption', format: 'skip' },
+          { selector: '.gallery', format: 'skip' },
+          { selector: 'img', format: 'skip' },
+          { selector: '.mw-references-wrap', format: 'skip' },
+          { selector: 'figcaption', format: 'skip' },
+          { selector: '.magnify', format: 'skip' },
+          { selector: '.internal', format: 'skip' },
+          { selector: '.image-caption', format: 'skip' },
+          { selector: '.gallerytext', format: 'skip' },
           { selector: 'a', format: 'inline', options: { ignoreHref: true } }
         ]
       });
       
-      // Additional cleanup for citations and brackets
       let cleanText = sectionText
-        .replace(/\[edit.*?\]/g, '') // Remove [edit] links
-        .replace(/\[\d+\]/g, '') // Remove citation numbers like [1], [2]
-        .replace(/\[a\]/g, '') // Remove letter citations like [a], [b]
-        .replace(/\[\/wiki\/.*?\]/g, '') // Remove wiki links like [/wiki/Something]
-        .replace(/\[\/\/upload\.wikimedia\.org\/.*?\]/g, '') // Remove image URLs
-        .replace(/\[https?:\/\/.*?\]/g, '') // Remove external URLs
-        // Remove numbered citation lists (pattern: number followed by ^ and citation text)
+        .replace(/\[edit.*?\]/g, '')
+        .replace(/\[\d+\]/g, '')
+        .replace(/\[a\]/g, '')
+        .replace(/\[\/wiki\/.*?\]/g, '')
+        .replace(/\[\/\/upload\.wikimedia\.org\/.*?\]/g, '')
+        .replace(/\[https?:\/\/.*?\]/g, '')
         .replace(/\d+\.\s*\^.*?(?=\d+\.\s*\^|$)/gs, '')
-        .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+        .replace(/\s+/g, ' ')
         .trim();
 
-      const currentSection = sections.find((s: any) => s.index == section_index);
       if (currentSection && Array.isArray(sections)) {
-        let subsections: {index: number, line: string}[] = []
+        let subsections: {index: number, line: string}[] = [];
         let i = section_index;
 
-        while (sections[i].toclevel > currentSection.toclevel && sections[i].index > section_index && sections[i - 1].toclevel < sections[i].toclevel) {
+        while (i < sections.length && sections[i] && sections[i-1] && 
+               sections[i].toclevel > currentSection.toclevel && 
+               sections[i].index > section_index && 
+               sections[i - 1].toclevel < sections[i].toclevel) {
           subsections.push(sections[i]);
           i++;
         }
 
-        
         if (subsections.length > 0) {
-          // Find the first subsection title in the text
           const firstSubsection = subsections[0];
           const subsectionTitle = firstSubsection.line;
-          console.log("subsectionTitle", subsectionTitle);
           if (subsectionTitle) {
             const regex = new RegExp(`\\ ${subsectionTitle.toUpperCase()}\\b`, 'm');
             const match = cleanText.search(regex);
-
-            
             if (match !== -1) {
-              console.log(`Found subsection "${subsectionTitle}" at position ${match}`);
-              // Include everything before the period that precedes the title
               cleanText = cleanText.substring(0, match + 1).trim();
             }
           }
-
-         
-
         }
       }
+
       if (currentSection.line) {
         const sectionTitleRegex = new RegExp(`${currentSection.line.toUpperCase()}\\b`, 'g');
         cleanText = cleanText.replace(sectionTitleRegex, '').trim();
       }
 
       if (!cleanText || cleanText.length === 0) {
+        console.log("No content available for section", currentSection.line);
         return `No content available for section "${currentSection.line}"`;
       }
 
       return cleanText;
-    } catch (error) {
-      console.error('Error fetching section content:', error);
+    } catch (fetchError: any) {
+      if (fetchError.name === 'AbortError') {
+        console.error("Wikipedia API request timed out");
+      } else {
+        console.error("Error fetching from Wikipedia API:", fetchError);
+      }
       return null;
     }
-  }
+  };
 
   const handlePageUpdate = async (url: string) => {
-    if (!url || !url.includes("wikipedia.org/wiki/") || url === lastProcessedUrl || isProcessing) {
+    const baseUrl = url.match(idRegex)?.[0] || url;
+
+    if (!baseUrl || baseUrl === lastProcessedUrl || isProcessing || !url.includes("wikipedia.org/wiki/Main_Page")) {
       return;
     }
 
     isProcessing = true;
     try {
-      lastProcessedUrl = url;
-      const title = decodeURIComponent(new URL(url).pathname.replace("/wiki/", ""));
-      const fetched = await fetchAllData(title, url);
+      lastProcessedUrl = baseUrl;
+      
+      const title = decodeURIComponent(new URL(baseUrl).pathname.replace("/wiki/", ""));
+      await fetchAllData(title, baseUrl);
     } finally {
       isProcessing = false;
     }
   }
 
   const fetchAllData = async (title: string, currentUrl: string) => {
+    if (currentUrl.includes("wikipedia.org/wiki/Main_Page")) {
+      return false;
+    }
+    currentUrl = currentUrl.match(idRegex)?.[0] || currentUrl;
     try {
       const storageKeys = [`title_${currentUrl}`, `description_${currentUrl}`, `extract_${currentUrl}`, `sections_${currentUrl}`, `metadata_${currentUrl}`];
       const existingData = await browser.storage.session.get(storageKeys);
       
-      // If data exists and is fresh (less than 1 hour old)
+
       if (existingData[`title_${currentUrl}`] && 
           existingData[`sections_${currentUrl}`] && 
           existingData[`metadata_${currentUrl}`]?.timestamp && 
           Date.now() - existingData[`metadata_${currentUrl}`].timestamp < 1000 * 60 * 60) {
+          console.log("data = fresh");
         return true;
       }
 
-      const [summaryResponse, sectionsResponse, ] = await Promise.all([
-        fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`),
-        fetch(`https://en.wikipedia.org/w/api.php?origin=*&format=json&action=parse&page=${encodeURIComponent(title)}&prop=sections`),
+      const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+      const sectionsUrl = `https://en.wikipedia.org/w/api.php?origin=*&format=json&action=parse&page=${encodeURIComponent(title)}&prop=sections`;
+
+      const [summaryResponse, sectionsResponse] = await Promise.all([
+        makeWikipediaRequest(summaryUrl),
+        makeWikipediaRequest(sectionsUrl)
       ]);
-      
-      const [summaryData, sectionsData] = await Promise.all([
+
+      if (!summaryResponse.ok || !sectionsResponse.ok) {
+        console.error("API request failed:", {
+          summary: summaryResponse.status,
+          sections: sectionsResponse.status
+        });
+        return false;
+      }
+
+      const [summaryData, sectionsData]: [any, SectionsData] = await Promise.all([
         summaryResponse.json(),
         sectionsResponse.json()
       ]);
 
-
       const timeStamp = Date.now();
-
+     
       await browser.storage.session.set({
         [`title_${currentUrl}`]: summaryData.title,
         [`description_${currentUrl}`]: summaryData.description,
@@ -282,22 +447,18 @@ export default defineBackground(() => {
   browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     // Only process when the page is fully loaded and has a URL
     if (changeInfo.status === "complete" && tab.url?.includes("wikipedia.org/wiki/")) {
-      console.log("onUpdated", tab.url);
-      handlePageUpdate(tab.url);
-    }
-    if (tab.url) {  
-      currentUrl = tab.url;
+      const url = tab.url.match(idRegex)?.[0] || tab.url;
+      console.log("onUpdated", url);
+      handlePageUpdate(url);
     }
   });
 
   browser.tabs.onActivated.addListener(async (activeInfo) => {  
     const tab = await browser.tabs.get(activeInfo.tabId);
     if (tab.url?.includes("wikipedia.org/wiki/")) {
-      console.log("onActivated", tab.url);
-      handlePageUpdate(tab.url);
-    }
-    if (tab.url) {  
-      currentUrl = tab.url;
+      const url = tab.url.match(idRegex)?.[0] || tab.url;
+      console.log("onActivated", url);
+      handlePageUpdate(url);
     }
   });
 

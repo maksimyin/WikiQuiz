@@ -3,8 +3,7 @@ import './Sidebar.css';
 import { IoMdArrowBack } from "react-icons/io";
 import { LuBrain } from "react-icons/lu";
 import { IoDocumentTextOutline } from "react-icons/io5";
-
-
+import { IoMdMenu, IoMdClose } from "react-icons/io";
 
 const Sidebar = () => {
   const [sections, setSections] = useState<any[]>([]);
@@ -12,6 +11,26 @@ const Sidebar = () => {
   const [description, setDescription] = useState<string>("");
   const [extract, setExtract] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState(true);
+  
+  // Don't render sidebar on Wikipedia main page
+  if (window.location.pathname === '/wiki/Main_Page') {
+    return null;
+  } 
+  // Update page styles when sidebar state changes
+  useEffect(() => {
+    if (isCollapsed) {
+      document.body.classList.remove('wiki-ai-sidebar-open');
+    } else {
+      document.body.classList.add('wiki-ai-sidebar-open');
+    }
+  }, [isCollapsed]);
+
+  // Function to handle user clicking the toggle button
+  const handleToggleClick = async () => {
+    const result = await browser.runtime.sendMessage({ type: 'toggleSidebar', payload: 'session' });
+    setIsCollapsed(!result.sidebarEnabled);
+  };
   type QuizMode = {
     quizGeneration: boolean;
     quizType: "general_knowledge" | "text_specific" | undefined;
@@ -42,6 +61,10 @@ const Sidebar = () => {
 
   async function loadDataFromStorage() {
     if (!window.location.hostname.endsWith('wikipedia.org')) {
+      return;
+    }
+    
+    if (window.location.pathname === '/wiki/Main_Page') {
       return;
     }
     
@@ -79,15 +102,13 @@ const Sidebar = () => {
     setTitle("");
     setDescription("");
     setExtract("");
+    async function getSidebarEnabled() {
+      const enabled = await browser.runtime.sendMessage({ type: 'getSidebarState', payload: 'session' });
+      setIsCollapsed(!enabled.sidebarEnabled);
+    }
+    getSidebarEnabled();
 
-    const handleUrlChange = () => {
-      loadDataFromStorage();
-    };
-
-    window.addEventListener('popstate', handleUrlChange);
-    return () => {
-      window.removeEventListener('popstate', handleUrlChange);
-    };
+ 
   }, []);
 
   useEffect(() => {
@@ -115,7 +136,8 @@ const Sidebar = () => {
           payload: {
             topic: title,
             bucket_a: quizMode.clickedElement === "summary" ? summary_chopped : quizMode.section_index,
-            quizType: quizMode.quizType
+            quizType: quizMode.quizType,
+            url: window.location.href
           }
         })
       }
@@ -123,7 +145,6 @@ const Sidebar = () => {
   getQuizContent();
   }, [quizMode]);
 
- 
 
   if (isLoading) {
     return (
@@ -142,20 +163,143 @@ const Sidebar = () => {
     hoveringState: false
   }
 
+  // separating sections by subsections
+  // [{section}, {section}, {section}, {section}] -> [{...main_section, subsections: [{section}, {section}, {section}]}]
+    // 0, 1, 2, 1, 0 ,1, 2, 2, 2, 3, 2, 1, 0 -> [{...main_section, subsections: [{...section, subsections: [{section}]}, {section}]}]... etc
+
+  interface WikiSection {
+    anchor: string,
+    fromtitle: string,
+    index: number,
+    level: number,
+    line: string,
+    number: number,
+    toclevel: number,
+  }
+  interface SectionWithSubsections extends WikiSection {
+    subsections: SectionWithSubsections[];
+    numberedPath: string; 
+  }
+
+  const createNestedSections = (sections: WikiSection[]): SectionWithSubsections[] => {
+    const mainSections = sections.filter(section => section.toclevel === 1);
+    return mainSections.map((mainSection, mainIndex) => {
+      const nextMainIndex = sections.findIndex(
+        (s, i) => i > sections.indexOf(mainSection) && s.toclevel === 1
+      );
+
+      const sectionEnd = nextMainIndex === -1 ? sections.length : nextMainIndex;
+      const childSections = sections.slice(sections.indexOf(mainSection) + 1, sectionEnd);
+      
+      // Main section numbering: "Section 1", "Section 2", etc.
+      const numberedPath = `Section ${mainIndex + 1}`;
+      
+      return {
+        ...mainSection,
+        numberedPath,
+        subsections: buildSubsections(childSections, mainSection.toclevel + 1, `${mainIndex + 1}`)
+      };
+    });
+  };
+
+  const buildSubsections = (sections: WikiSection[], level: number, parentPath: string): SectionWithSubsections[] => {
+    const directSubsections = sections.filter(section => section.toclevel === level);
+
+    return directSubsections.map((section, index) => {
+      const nextSectionIndex = sections.findIndex(
+        (s, i) => i > sections.indexOf(section) && s.toclevel <= level
+      );
+
+      const sectionEnd = nextSectionIndex === -1 ? sections.length : nextSectionIndex;
+      const childSections = sections.slice(sections.indexOf(section) + 1, sectionEnd);
+      
+      // Subsection numbering: "2.1", "2.1.1", etc.
+      const numberedPath = `${parentPath}.${index + 1}`;
+
+      return {
+        ...section,
+        numberedPath,
+        subsections: buildSubsections(childSections, level + 1, numberedPath)
+      };
+    });
+  };
+  const nestedSections = createNestedSections(sections);
+  const renderSections = (sections: SectionWithSubsections[]) => {
+    return sections.map((section) => (
+      <React.Fragment key={section.index}>
+        <div 
+          className="sidebar-section" 
+          id={`section-${section.index}`}
+          onMouseEnter={() => {
+            setQuizState({
+              summary: false,
+              section: true,
+              section_index: section.index,
+              hoveringState: true
+            })
+          }} 
+          onMouseLeave={() => {
+            setQuizState(noHoverState)
+          }}
+          onClick={() => {
+            window.location.hash = section.anchor;
+          }}
+        >
+          {quizState.hoveringState && quizState.section && 
+            Number(quizState.section_index) === Number(section.index) && (
+            <div className="quiz-button-container">
+              <button 
+                className="quiz-button"
+                onClick={() => {
+                  setQuizMode({
+                    quizGeneration: true,
+                    quizType: "general_knowledge",
+                    clickedElement: `section-${section.index}`,
+                    section_index: Number(section.index)
+                  })
+                }}
+                title="Article Quiz"
+              >
+                <IoDocumentTextOutline />
+              </button>
+            </div>
+          )}
+          <h2 className="section-title">{section.numberedPath.includes("Section") ? section.numberedPath : `Section ${section.numberedPath}`}</h2>
+          <p className="section-content">{section.line || ""}</p>
+        </div>
+        
+        {Array.isArray(section.subsections) && section.subsections.length > 0 && (
+          <div style={{marginLeft: '15px'}}>
+            {renderSections(section.subsections)}
+          </div>
+        )}
+      </React.Fragment>
+    ));
+  };
+
   
 
 
   // need to add two buttons to the sidebar: one to toggle dark mode and one to toggle sidebar visibility
   // add functionality to toggle dark mode and sidebar visibility
-  // on hover on sections of sidebar, need to show a button on the right top corner which on clicked, creates a quiz
-    // quiz structure -> Section or General Overview + content on top <hr><hr> and then quiz content with back arrow on top left to bring back to original page
   // later, consider adding feature to shrink and expand sidebar (hard to implement bc/ of shadow dom)
   // work on sidebar styles
     //before production make cleaner especially left hand bar
   return (
     <>
-    {quizMode.quizGeneration ? (
-      <div className="sidebar-container">
+      {/* Floating toggle button */}
+      <button 
+        className={`sidebar-toggle-button ${isCollapsed ? 'collapsed' : 'expanded'}`}
+        onClick={handleToggleClick}
+        title={isCollapsed ? "Open Sidebar" : "Close Sidebar"}
+      >
+        {isCollapsed ? <IoMdMenu /> : <IoMdClose />}
+      </button>
+
+      {/* Main sidebar content */}
+      <div className={`sidebar-container ${isCollapsed ? 'collapsed' : 'expanded'}`}>
+        {quizMode.quizGeneration ? (
+          <>
         <header className="sidebar-header">
           {quizMode.clickedElement === "summary" ? (
             <div className="sidebar-section">
@@ -167,8 +311,7 @@ const Sidebar = () => {
                 section_index: undefined
               })
             }}/>
-              <h1 className="section-title">General Overview</h1>
-              <p className="section-content">{extract || "No general overview available."}</p>
+              <h1 className="section-title">Introduction</h1>
               </div>
           ) : (
             <div className="sidebar-section">
@@ -189,7 +332,7 @@ const Sidebar = () => {
                 section_index: undefined
               })
             }}/>
-                    <h1 className="section-title">{`Section ${index}`}</h1>
+                    <h1 className="section-title">{`Section ${section.number}`}</h1>
                     <p className="section-content">{section.line || ""}</p>
                   </>
                 );
@@ -211,15 +354,16 @@ Suspendisse massa lectus, pharetra a erat ullamcorper, bibendum varius mauris. V
 Etiam in lacus non lectus fringilla lobortis non a libero. Duis vel tincidunt velit, eu maximus eros. Etiam luctus, massa sed volutpat mollis, neque augue tincidunt ipsum, vitae interdum lacus sem at tortor. Nunc gravida vel lacus et vehicula. Fusce pretium, sapien a luctus dignissim, nunc massa accumsan augue, et bibendum nulla neque vitae urna. Sed ornare tincidunt diam sit amet ultricies. Proin mattis blandit elit, in dignissim nunc tempor a.
           </div>
         </div>
-      </div>
+      </>
     ) : (
-      <div className="sidebar-container">
+      <>
       <header className="sidebar-header">
         <h1 className="sidebar-title">{title || "Untitled"}</h1>
         {description && <p className="sidebar-description">{description}</p>}
       </header>
       
       <div className="sidebar-content">
+        {/* TODO: change extract to Wiki Action Api section=0 */}
         {extract && (
           <div className="sidebar-section" id="summary" onMouseEnter={() => {
             setQuizState({
@@ -230,7 +374,11 @@ Etiam in lacus non lectus fringilla lobortis non a libero. Duis vel tincidunt ve
             })
           }} onMouseLeave={() => {
             setQuizState(noHoverState)
-          }}>
+          }}
+          onClick={() => {
+            window.location.hash = "";
+          }}
+          >
             {quizState.hoveringState && quizState.summary && (
               <div className="quiz-button-container">
               <button 
@@ -248,72 +396,23 @@ Etiam in lacus non lectus fringilla lobortis non a libero. Duis vel tincidunt ve
               </button>
               </div>
             )}
-            <h2 className="section-title">General Overview</h2>
-            <p className="section-content">{extract || "No general overview available."}</p>
+            <h2 className="section-title">Introduction</h2>
           </div>
         )}
-        
-        {Array.isArray(sections) && sections.length > 0 ? (
-          sections.map((section, index) => (
-            <div key={section.index} className="sidebar-section" id={`section-${section.index}`}
-             style={{marginLeft: `${(section.toclevel - 1) * 15}px`}}
-             onMouseEnter={() => {
-              setQuizState({
-                summary: false,
-                section: true,
-                section_index: section.index,
-                hoveringState: true
-              })
-            }} onMouseLeave={() => {
-              setQuizState(noHoverState)
-            }}>
-              {quizState.hoveringState && quizState.section && quizState.section_index === section.index && (
-                <div className="quiz-button-container">
-                  <button 
-                    className="quiz-button"
-                    onClick={() => {
-                      setQuizMode({
-                        quizGeneration: true,
-                        quizType: "text_specific",
-                        clickedElement: `section-${section.index}`,
-                        section_index: Number(section.index)
-                      })
-                    }}
-                    title="Article + General Knowledge Quiz"
-                  >
-                    <LuBrain />
-                  </button>
-                  <button 
-                    className="quiz-button"
-                    onClick={() => {
-                      setQuizMode({
-                        quizGeneration: true,
-                        quizType: "general_knowledge",
-                        clickedElement: `section-${section.index}`,
-                        section_index: Number(section.index)
-                      })
-                    }}
-                    title="Article Specific Quiz"
 
-                  >
-                    <IoDocumentTextOutline />
-                  </button>
-                </div>
-              )}
-              <h2 className="section-title">{`Section ${section.index}`}</h2>
-              <p className="section-content">{section.line || ""}</p>
-            </div>
-          ))
+        {Array.isArray(nestedSections) && nestedSections.length > 0 ? (
+          renderSections(nestedSections)
         ) : (
           <div className="sidebar-section">
             <p className="section-content">No sections available. Please reload page in case of rendering issues.</p>
           </div>
         )}
+        
       </div>
-    </div>
+      </>
     )}
+      </div>
     </>
-
   );
 };
 

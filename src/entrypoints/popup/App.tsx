@@ -20,7 +20,6 @@ function App() {
             checked={darkMode}
             onChange={() => {
               setDarkMode(!darkMode);
-              browser.storage.local.set({ darkMode: !darkMode });
             }}
           />
           Dark Mode
@@ -33,7 +32,7 @@ function App() {
             checked={sidebarEnabled}
             onChange={() => {
               setSidebarEnabled(!sidebarEnabled);
-              browser.storage.local.set({ sidebarEnabled: !sidebarEnabled });
+              browser.runtime.sendMessage({ type: 'toggleSidebar', payload: 'local' });
             }}
           />
           Enable Sidebar

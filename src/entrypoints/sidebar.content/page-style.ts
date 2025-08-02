@@ -1,51 +1,48 @@
-const SIDEBAR_WIDTH_PX = 360;
-// Use a more common breakpoint for tablets/small desktops
-const MIN_VIEWPORT_WIDTH_FOR_SIDEBAR = SIDEBAR_WIDTH_PX + 768;
-const STYLE_ID = 'wiki-ai-page-pusher';
+const SIDEBAR_WIDTH_PX = 320;
+const SIDEBAR_WIDTH_SMALL_PX = 250;
+const BREAKPOINT_PX = 780;
+const STYLE_ID = 'wiki-ai-page-styles';
 
-const getStyleSheet = () => `
-  @media (min-width: ${MIN_VIEWPORT_WIDTH_FOR_SIDEBAR}px) {
-    /*
-      To make this work on most websites like Liner does, we apply padding
-      to the <body> element. This shifts the entire page content to the left.
-    */
-    body.wiki-ai-sidebar-active {
-      position: relative !important;
-      padding-right: ${SIDEBAR_WIDTH_PX}px !important;
-      box-sizing: border-box !important;
-      transition: padding-right 0.2s ease-in-out !important;
-      overflow-x: hidden !important; /* Prevent horizontal scroll */
-    }
-
-    /*
-      Position the <wxt-root> element, which hosts our UI. We anchor it
-      to the right side of the viewport. This is the container for the sidebar.
-    */
+const getStyleSheet = () => {
+  console.log('Current viewport width:', window.innerWidth);
+  
+  return `
+    /* Minimal styles for the floating sidebar container */
     wxt-root {
       position: fixed !important;
       top: 0 !important;
       right: 0 !important;
       height: 100vh !important;
-      width: ${SIDEBAR_WIDTH_PX}px !important;
-      z-index: 2147483647 !important; /* Use max z-index to appear on top */
-      display: block !important;
-      pointer-events: auto !important; /* Ensure it captures mouse events */
-      isolation: isolate !important; /* Create new stacking context */
+      width: 100vw !important;
+      z-index: 2147483647 !important;
+      pointer-events: none !important; /* Allow clicks to pass through */
+      isolation: isolate !important;
     }
 
-    /* Prevent main page scroll when hovering over sidebar */
-    wxt-root:hover ~ * {
-      pointer-events: none !important;
+    /* Only allow pointer events on our actual UI elements */
+    wxt-root * {
+      pointer-events: auto !important;
     }
-  }
 
-  @media (max-width: ${MIN_VIEWPORT_WIDTH_FOR_SIDEBAR - 1}px) {
-    /* On smaller screens, hide the sidebar's container entirely. */
-    wxt-root {
-      display: none !important;
+    /* Default: shift page content when sidebar is open (larger screens) */
+    body.wiki-ai-sidebar-open {
+      padding-right: ${SIDEBAR_WIDTH_PX}px !important;
+      transition: padding-right 0.3s ease !important;
+      box-sizing: border-box !important;
+      margin-right: 0 !important;
     }
-  }
-`;
+
+    /* Smaller screens: reduce sidebar width and page shift */
+    @media (max-width: ${BREAKPOINT_PX}px) {
+      body.wiki-ai-sidebar-open {
+        padding-right: ${SIDEBAR_WIDTH_SMALL_PX}px !important;
+      }
+    }
+  `;
+};
+
+// Store the update function globally for cleanup
+let globalUpdateStyles: (() => void) | null = null;
 
 export function injectPageStyles() {
   let styleEl = document.getElementById(STYLE_ID);
@@ -55,13 +52,29 @@ export function injectPageStyles() {
     document.head.append(styleEl);
   }
   styleEl.textContent = getStyleSheet();
-  document.body.classList.add('wiki-ai-sidebar-active');
+  
+  // Clean up any existing listener
+  if (globalUpdateStyles) {
+    window.removeEventListener('resize', globalUpdateStyles);
+  }
+  
+  // Create new update function
+  globalUpdateStyles = () => {
+    styleEl!.textContent = getStyleSheet();
+  };
+  
+  window.addEventListener('resize', globalUpdateStyles);
 }
 
 export function removePageStyles() {
-  document.body.classList.remove('wiki-ai-sidebar-active');
   const styleEl = document.getElementById(STYLE_ID);
   if (styleEl) {
     styleEl.remove();
+  }
+  
+  // Remove resize listener
+  if (globalUpdateStyles) {
+    window.removeEventListener('resize', globalUpdateStyles);
+    globalUpdateStyles = null;
   }
 } 

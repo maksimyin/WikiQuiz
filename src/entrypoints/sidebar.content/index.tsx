@@ -7,9 +7,14 @@ export default defineContentScript({
     matches: ['*://*.wikipedia.org/wiki/*'],
     cssInjectionMode: 'ui',
     async main(ctx) {
+        // Don't inject sidebar on Wikipedia main page
+        if (window.location.pathname === '/wiki/Main_Page') {
+            return;
+        }
+        
         const ui = await createShadowRootUi(ctx, {
             name: 'wiki-ai-sidebar',
-            position: 'inline',
+            position: 'overlay',
             anchor: 'body',
             onMount: (container) => {
                 injectPageStyles();
