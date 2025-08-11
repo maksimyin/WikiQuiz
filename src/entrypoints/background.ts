@@ -1,5 +1,7 @@
 import { convert } from 'html-to-text';
 import * as prompts from '../utils/prompts';
+import { generateQuiz } from '../utils/ai-helper';
+import * as types from '../utils/types';
 
 export default defineBackground(() => {
 
@@ -18,10 +20,11 @@ export default defineBackground(() => {
     getSidebarState: "local" | "session"
   } // add more when we shape more payloads
 
-  type ResponseData = Record<string, string | number | boolean>;
+  type ResponseData = Record<string, string | number | boolean | types.QuizContent>;
   type SendResponse = (response: ResponseData) => void;
 
   type Handler<T> = (payload: T, sendResponse: SendResponse) => void;
+
 
   const handlers: {
     [K in keyof PayloadMap]: Handler<PayloadMap[K]>
@@ -32,7 +35,7 @@ export default defineBackground(() => {
     getData: async (payload, sendResponse) => {
       let { url } = payload;
       url = url.match(idRegex)?.[0] || url;
-      const storageKeys = [`title_${url}`, `description_${url}`, `extract_${url}`, `sections_${url}`, `metadata_${url}`];
+      const storageKeys = [`title_${url}`, `description_${url}`, `summary_${url}`, `sections_${url}`, `metadata_${url}`];
       let data = await browser.storage.session.get(storageKeys);
 
       // If no data or data is outdated, fetch it
@@ -60,11 +63,13 @@ export default defineBackground(() => {
       sendResponse(formattedData);
     },
     // fix return type when ai thing finished
-    getQuizContent: async (payload, sendResponse): Promise< void | boolean> => {
-      const { topic, bucket_a, quizType, url } = payload;
+    getQuizContent: async (payload, sendResponse): Promise<boolean> => {
+      const { topic, bucket_a, url } = payload;
       console.log("bucket_a", bucket_a);
       if (typeof(bucket_a) === "number") {
-        const sectionContent = await getSectionContent(topic, bucket_a, url);
+        let sectionContent = await getSectionContent(topic, bucket_a, url);
+        let sectionTitle = sectionContent?.[1] || "";
+        sectionContent = sectionContent?.[0] || "";
         if (sectionContent && sectionContent.includes("No content available")) {
           sendResponse({"reply": sectionContent})
           return false
@@ -77,19 +82,37 @@ export default defineBackground(() => {
             section_chopped[idx + 1] = sentence.trim();
           });
           console.log("section_chopped", section_chopped);
-          // sendAIChat(section_chopped, quizType);
+          const quizContent: types.QuizContent = await sendAIChat(section_chopped, "section", topic, sectionTitle);
+          try {
+            console.log("sent quizContent", quizContent);
+            sendResponse({"reply": quizContent})
+            return true;
+          } catch (error) {
+            console.error("Error sending quiz content:", error);
+            sendResponse({"reply": "Error generating quiz content"})
+            return false;
+          }
         }
       } else if (typeof(bucket_a) === "object") {
         const summaryContent = bucket_a
+        console.log("summaryContent", summaryContent);
         if (summaryContent) {
-          sendResponse({"reply": "Found summary content"})
-          return false
+          const quizContent = await sendAIChat(summaryContent, "summary", topic);
+          try {
+            console.log("sent quizContent", quizContent);
+            sendResponse({"reply": quizContent})
+            return true;
+          } catch (error) {
+            console.error("Error sending quiz content:", error);
+            sendResponse({"reply": "Error generating quiz content"})
+            return false;
+          }
         } else {
           sendResponse({"reply": "No content available"})
           return false
         }
       }
-      // Return as sendResponse to Sidebar and implement quiz generation there
+      return false;
     },
     toggleSidebar: (payload, sendResponse): void => {
       toggleSidebar(payload).then((enabled) => {
@@ -189,8 +212,27 @@ export default defineBackground(() => {
   const MIN_REQUEST_INTERVAL = 1000; 
 
   // TODO: Use utils functions to send section/summary to Cohere
-  const sendAIChat = async () => {
-    return null;
+  const sendAIChat = async (content: Record<number, string>, type: "section" | "summary", topic: string, sectionTitle?: string): Promise<types.QuizContent> => {
+    function formatBucket(sentences: Record<number, string>) {
+      return Object.entries(sentences)
+        .map(([n, line]) => `${n}. ${line}`)
+        .join('\n');
+    }
+
+
+    const quizContent: any = type === "section" ? 
+    await generateQuiz(prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
+      TOPIC: topic,
+      BUCKET_A: formatBucket(content)
+    }), prompts.fillPrompt(prompts.SECTION_PROMPT_USER, {
+      TOPIC: topic,
+      SECTION_TITLE: sectionTitle || ""}))
+     :
+    await generateQuiz(prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
+      TOPIC: topic,
+      BUCKET_A: formatBucket(content)
+    }), prompts.fillPrompt(prompts.SUMMARY_PROMPT_USER, {TOPIC: topic}))
+    return JSON.parse(quizContent.message.content[0].text); // subject to change based on different LLMs
   }
 
   const toggleSidebar = async (payload: "local" | "session") => {
@@ -248,7 +290,55 @@ export default defineBackground(() => {
     }
   };
 
-  const getSectionContent = async (topic: string, section_index: number, pageUrl: string): Promise<string | null> => {
+  const SELECTORS = [
+    // Skip infoboxes, sidebars, navboxes, and ToC
+    { selector: 'table.infobox', format: 'skip' },
+    { selector: '.infobox', format: 'skip' },
+    { selector: 'table.vertical-navbox', format: 'skip' },
+    { selector: '.vertical-navbox', format: 'skip' },
+    { selector: 'table.sidebar', format: 'skip' },
+    { selector: '.sidebar', format: 'skip' },
+    { selector: 'table.navbox', format: 'skip' },
+    { selector: '.navbox', format: 'skip' },
+    { selector: '#toc', format: 'skip' },
+    { selector: '.toc', format: 'skip' },
+    // General cleanups and misc templates
+    { selector: '.mw-editsection', format: 'skip' },
+    { selector: '.reference', format: 'skip' },
+    { selector: '.error', format: 'skip' },
+    { selector: '.mw-empty-elt', format: 'skip' },
+    { selector: '.reflist', format: 'skip' },
+    { selector: '.navbox', format: 'skip' },
+    { selector: '.infobox', format: 'skip' },
+    { selector: '.hatnote', format: 'skip' },
+    { selector: '.citation', format: 'skip' },
+    { selector: 'sup', format: 'skip' },
+    { selector: '.printfooter', format: 'skip' },
+    { selector: '.catlinks', format: 'skip' },
+    { selector: '.thumbinner', format: 'skip' },
+    { selector: '.thumb', format: 'skip' },
+    { selector: '.thumbcaption', format: 'skip' },
+    { selector: '.caption', format: 'skip' },
+    { selector: '.gallery', format: 'skip' },
+    { selector: 'img', format: 'skip' },
+    { selector: '.mw-references-wrap', format: 'skip' },
+    { selector: 'figcaption', format: 'skip' },
+    { selector: '.magnify', format: 'skip' },
+    { selector: '.internal', format: 'skip' },
+    { selector: '.image-caption', format: 'skip' },
+    { selector: '.gallerytext', format: 'skip' },
+    { selector: '.shortdescription', format: 'skip' },
+    { selector: '.metadata', format: 'skip' },
+    { selector: '.sistersitebox', format: 'skip' },
+    { selector: '.rellink', format: 'skip' },
+    { selector: '.ambox', format: 'skip' },
+    { selector: '.mbox', format: 'skip' },
+    { selector: 'a', format: 'inline', options: { ignoreHref: true } }
+  ]
+  
+
+  // create a general function to convert html to text and then text to sentences for summary change from extract to section=0; then clean up frontend
+  const getSectionContent = async (topic: string, section_index: number, pageUrl: string): Promise<[string, string] | string | null> => {
     try {
       pageUrl = pageUrl.match(idRegex)?.[0] || pageUrl;
       console.log("pageUrl", pageUrl);
@@ -280,33 +370,7 @@ export default defineBackground(() => {
       const sectionText = convert(sectionHTMLData.parse.text["*"], {
         wordwrap: false,
         preserveNewlines: true,
-        selectors: [
-          { selector: '.mw-editsection', format: 'skip' },
-          { selector: '.reference', format: 'skip' },
-          { selector: '.error', format: 'skip' },
-          { selector: '.mw-empty-elt', format: 'skip' },
-          { selector: '.reflist', format: 'skip' },
-          { selector: '.navbox', format: 'skip' },
-          { selector: '.infobox', format: 'skip' },
-          { selector: '.hatnote', format: 'skip' },
-          { selector: '.citation', format: 'skip' },
-          { selector: 'sup', format: 'skip' },
-          { selector: '.printfooter', format: 'skip' },
-          { selector: '.catlinks', format: 'skip' },
-          { selector: '.thumbinner', format: 'skip' },
-          { selector: '.thumb', format: 'skip' },
-          { selector: '.thumbcaption', format: 'skip' },
-          { selector: '.caption', format: 'skip' },
-          { selector: '.gallery', format: 'skip' },
-          { selector: 'img', format: 'skip' },
-          { selector: '.mw-references-wrap', format: 'skip' },
-          { selector: 'figcaption', format: 'skip' },
-          { selector: '.magnify', format: 'skip' },
-          { selector: '.internal', format: 'skip' },
-          { selector: '.image-caption', format: 'skip' },
-          { selector: '.gallerytext', format: 'skip' },
-          { selector: 'a', format: 'inline', options: { ignoreHref: true } }
-        ]
+        selectors: SELECTORS
       });
       
       let cleanText = sectionText
@@ -355,7 +419,7 @@ export default defineBackground(() => {
         return `No content available for section "${currentSection.line}"`;
       }
 
-      return cleanText;
+      return [cleanText, currentSection.line];
     } catch (fetchError: any) {
       if (fetchError.name === 'AbortError') {
         console.error("Wikipedia API request timed out");
@@ -402,7 +466,7 @@ export default defineBackground(() => {
         return true;
       }
 
-      const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+      const summaryUrl = `https://en.wikipedia.org/w/api.php?origin=*&format=json&action=parse&page=${encodeURIComponent(title)}&prop=text&section=0`;
       const sectionsUrl = `https://en.wikipedia.org/w/api.php?origin=*&format=json&action=parse&page=${encodeURIComponent(title)}&prop=sections`;
 
       const [summaryResponse, sectionsResponse] = await Promise.all([
@@ -418,22 +482,56 @@ export default defineBackground(() => {
         return false;
       }
 
+
       const [summaryData, sectionsData]: [any, SectionsData] = await Promise.all([
         summaryResponse.json(),
         sectionsResponse.json()
       ]);
 
+      // Convert section=0 HTML to plain text and sentences object
+      const summaryHtml: string | undefined = summaryData?.parse?.text?.["*"];
+      let summaryPlainText = "";
+      let summarySentences: Record<number, string> = {};
+      if (summaryHtml) {
+        const converted = convert(summaryHtml, {
+          wordwrap: false,
+          preserveNewlines: true,
+          selectors: SELECTORS
+        });
+        summaryPlainText = converted
+          .replace(/\[edit.*?\]/g, '')
+          .replace(/\[\d+\]/g, '')
+          .replace(/\[a\]/g, '')
+          .replace(/\[\/wiki\/.*?\]/g, '')
+          .replace(/\[\/\/upload\.wikimedia\.org\/.*?\]/g, '')
+          .replace(/\[https?:\/\/.*?\]/g, '')
+          .replace(/\d+\.\s*\^.*?(?=\d+\.\s*\^|$)/gs, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        const sentences = summaryPlainText.match(
+          /(?=[^])(?:\P{Sentence_Terminal}|\p{Sentence_Terminal}(?!['"`\p{Close_Punctuation}\p{Final_Punctuation}\s]))*(?:\p{Sentence_Terminal}+['"`\p{Close_Punctuation}\p{Final_Punctuation}]*|$)/gu
+        ) || (summaryPlainText ? [summaryPlainText] : []);
+        sentences.forEach((sentence: string, idx: number) => {
+          const trimmed = sentence.trim();
+          if (trimmed) {
+            summarySentences[idx + 1] = trimmed;
+          }
+        });
+      }
+
+      const parsedTitle = summaryData?.parse?.title ?? title;
+      console.log("summarySentences", summarySentences);
+      console.log("parsedTitle", parsedTitle);
       const timeStamp = Date.now();
-     
       await browser.storage.session.set({
-        [`title_${currentUrl}`]: summaryData.title,
-        [`description_${currentUrl}`]: summaryData.description,
-        [`extract_${currentUrl}`]: summaryData.extract,
+        [`title_${currentUrl}`]: parsedTitle,
+        [`summary_${currentUrl}`]: summarySentences,
         [`sections_${currentUrl}`]: sectionsData.parse?.sections,
         [`metadata_${currentUrl}`]: {
           timestamp: timeStamp,
           url: currentUrl,
-          title: summaryData.title
+          title: parsedTitle
         }
       });
       return true;

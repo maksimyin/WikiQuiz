@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import './Sidebar.css';
 import { IoMdArrowBack } from "react-icons/io";
-import { LuBrain } from "react-icons/lu";
 import { IoDocumentTextOutline } from "react-icons/io5";
 import { IoMdMenu, IoMdClose } from "react-icons/io";
+import * as types from '../utils/types';
 
 const Sidebar = () => {
   const [sections, setSections] = useState<any[]>([]);
   const [title, setTitle] = useState<string>("");
-  const [description, setDescription] = useState<string>("");
-  const [extract, setExtract] = useState<string>("");
+  const [summary, setSummary] = useState<Record<number, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const [quizContent, setQuizContent] = useState<types.QuizContent | null>(null);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
   
   // Don't render sidebar on Wikipedia main page
   if (window.location.pathname === '/wiki/Main_Page') {
@@ -44,6 +46,14 @@ const Sidebar = () => {
     section_index: undefined
   });
 
+  // Add/remove body class when quiz is active to allow global styling (e.g., hide toggle)
+  useEffect(() => {
+    if (quizMode.quizGeneration) {
+      document.body.classList.add('wiki-ai-quiz-active');
+    } else {
+      document.body.classList.remove('wiki-ai-quiz-active');
+    }
+  }, [quizMode.quizGeneration]);
 
   type QuizState = {
     summary: boolean;
@@ -86,9 +96,8 @@ const Sidebar = () => {
 
       data.sections && setSections(data.sections); // need to add logic removing unnecessary sections like referebcesm works cited, further reading, external links (can be configured to be shown in settings)
       data.title && setTitle(data.title);
-      data.description && setDescription(data.description);
-      data.extract && setExtract(data.extract);
-      if (!data.sections && !data.title && !data.description && !data.extract) {
+      data.summary && setSummary(data.summary);
+      if (!data.sections && !data.title && !data.summary) {
         setIsLoading(true);
       } else {
         setIsLoading(false);
@@ -100,8 +109,7 @@ const Sidebar = () => {
     setIsLoading(true);
     setSections([]);
     setTitle("");
-    setDescription("");
-    setExtract("");
+    setSummary({});
     async function getSidebarEnabled() {
       const enabled = await browser.runtime.sendMessage({ type: 'getSidebarState', payload: 'session' });
       setIsCollapsed(!enabled.sidebarEnabled);
@@ -113,39 +121,26 @@ const Sidebar = () => {
 
   useEffect(() => {
     async function getQuizContent() {
-      let summary_chopped: Record<number, string> = {};
       if (quizMode.quizGeneration) {
-        if (quizMode.clickedElement === "summary") {
-          let summary = extract;
-          if (summary) {
-
-            // later consider adding checking for abbreviations. Shjould work fine for now
-            const abbreviations = [
-              "Mr", "Mrs", "Ms", "Dr", "Prof", "Sr", "Jr", "St", "Mt", "Lt", "Col", "Gen", "Rep", "Sen", "Gov", "Capt", "Sgt"
-            ];
-            const sentences = summary.match(
-              /(?=[^])(?:\P{Sentence_Terminal}|\p{Sentence_Terminal}(?!['"`\p{Close_Punctuation}\p{Final_Punctuation}\s]))*(?:\p{Sentence_Terminal}+['"`\p{Close_Punctuation}\p{Final_Punctuation}]*|$)/gu
-            ) || [summary];
-            sentences.forEach((sentence, idx) => {
-              summary_chopped[idx + 1] = sentence.trim();
-            });
-          }
-        }
-        const quizContent = await browser.runtime.sendMessage({
+        // Reset quiz content to ensure loading state until fresh content arrives
+        setQuizContent(null);
+        const quizContent: {reply: types.QuizContent} = await browser.runtime.sendMessage({
           type: 'getQuizContent',
           payload: {
             topic: title,
-            bucket_a: quizMode.clickedElement === "summary" ? summary_chopped : quizMode.section_index,
+            bucket_a: quizMode.clickedElement === "summary" ? summary : quizMode.section_index,
             quizType: quizMode.quizType,
             url: window.location.href
           }
         })
+        console.log("quizContent", quizContent);
+        setQuizContent(quizContent.reply);
       }
   }
   getQuizContent();
   }, [quizMode]);
 
-
+ 
   if (isLoading) {
     return (
       <div className="sidebar-container">
@@ -162,6 +157,33 @@ const Sidebar = () => {
     section_index: undefined,
     hoveringState: false
   }
+
+  const totalQuestions = quizContent?.questions?.length ?? 0;
+  const currentQuestion =
+    quizContent && totalQuestions > 0
+      ? quizContent.questions[currentQuestionIndex]
+      : undefined;
+
+  const handleSelectOption = (optionIndex: number) => {
+    setSelectedAnswers((prev) => ({ ...prev, [currentQuestionIndex]: optionIndex }));
+  };
+
+  const goNext = () => {
+    if (currentQuestionIndex < (totalQuestions - 1)) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+    }
+  };
+
+  const goPrev = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(currentQuestionIndex - 1);
+    }
+  };
+
+  const resetQuizView = () => {
+    setCurrentQuestionIndex(0);
+    setSelectedAnswers({});
+  };
 
   // separating sections by subsections
   // [{section}, {section}, {section}, {section}] -> [{...main_section, subsections: [{section}, {section}, {section}]}]
@@ -296,8 +318,11 @@ const Sidebar = () => {
         {isCollapsed ? <IoMdMenu /> : <IoMdClose />}
       </button>
 
+      {/* Dim backdrop during quiz */}
+      {quizMode.quizGeneration && !isCollapsed && <div className="sidebar-backdrop" />}
+
       {/* Main sidebar content */}
-      <div className={`sidebar-container ${isCollapsed ? 'collapsed' : 'expanded'}`}>
+      <div className={`sidebar-container ${isCollapsed ? 'collapsed' : 'expanded'} ${quizMode.quizGeneration ? 'quiz-active' : ''}`}>
         {quizMode.quizGeneration ? (
           <>
         <header className="sidebar-header">
@@ -310,6 +335,7 @@ const Sidebar = () => {
                 clickedElement: undefined,
                 section_index: undefined
               })
+              resetQuizView();
             }}/>
               <h1 className="section-title">Introduction</h1>
               </div>
@@ -319,7 +345,7 @@ const Sidebar = () => {
                 const index = quizMode.clickedElement?.split("-")[1];
                 if (index === undefined) return null;
                 
-                const section = sections.find(s => s.index === index);
+                const section = sections.find(s => Number(s.index) === Number(index));
                 if (!section) return null;
                 
                 return (
@@ -331,6 +357,7 @@ const Sidebar = () => {
                 clickedElement: undefined,
                 section_index: undefined
               })
+              resetQuizView();
             }}/>
                     <h1 className="section-title">{`Section ${section.number}`}</h1>
                     <p className="section-content">{section.line || ""}</p>
@@ -341,17 +368,8 @@ const Sidebar = () => {
           )}
         </header>
         <div className="sidebar-content">
-
-          <div>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam ac sapien eu sapien dictum convallis. Morbi pretium nibh quis turpis mollis efficitur. Proin mattis justo quis mi ullamcorper, at pellentesque libero lobortis. Mauris a orci tempus, iaculis felis quis, lobortis dui. Donec bibendum metus et purus imperdiet, in hendrerit sem euismod. Donec tempor, mi a fermentum tincidunt, ligula ex lacinia augue, ac accumsan ipsum magna ut urna. Nunc at metus vitae tortor ornare dignissim.
-
-Sed faucibus, ex ac fringilla viverra, lectus felis pharetra eros, vel imperdiet enim nibh sed nulla. Donec sit amet posuere lorem, a sagittis justo. Interdum et malesuada fames ac ante ipsum primis in faucibus. Sed ut nisi quis massa volutpat vestibulum eget quis lacus. Phasellus at aliquam lacus. Nam turpis tortor, consectetur non dapibus vitae, feugiat eget leo. Fusce at congue sapien. Nullam sed mi iaculis, pharetra felis vel, finibus orci. Quisque consequat turpis in sapien tincidunt tincidunt. Duis et eros elementum, facilisis velit hendrerit, commodo velit.
-
-Fusce viverra imperdiet convallis. Duis ullamcorper ex sit amet orci varius, eget ullamcorper lectus dignissim. Mauris maximus interdum blandit. Aliquam eu volutpat ex, quis tristique nunc. Suspendisse ultricies nisl nec viverra sodales. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae; Vivamus consequat tortor sed mi venenatis, nec lacinia diam egestas. Aenean dignissim sem maximus ipsum congue, eu sagittis felis efficitur. Pellentesque pulvinar mollis urna ac placerat. Integer imperdiet nec tellus quis aliquam. Sed id mi tristique, vulputate felis quis, vulputate nisi. Quisque blandit ex a gravida tincidunt. Nam ornare libero quis sollicitudin vestibulum.
-
-Suspendisse massa lectus, pharetra a erat ullamcorper, bibendum varius mauris. Vestibulum dapibus porttitor maximus. Nulla a egestas nisl. Etiam id dictum nisi, porttitor tempor purus. Pellentesque sollicitudin magna consectetur, dapibus tortor vel, placerat velit. Sed ut ipsum commodo, mollis urna eu, tempus ligula. Pellentesque et dui sed nisi dignissim congue vel at ligula. Suspendisse potenti. Proin commodo lobortis nunc, sit amet lobortis ligula convallis ac. Sed in neque sed sapien porta ultricies dictum sit amet urna.
-
-Etiam in lacus non lectus fringilla lobortis non a libero. Duis vel tincidunt velit, eu maximus eros. Etiam luctus, massa sed volutpat mollis, neque augue tincidunt ipsum, vitae interdum lacus sem at tortor. Nunc gravida vel lacus et vehicula. Fusce pretium, sapien a luctus dignissim, nunc massa accumsan augue, et bibendum nulla neque vitae urna. Sed ornare tincidunt diam sit amet ultricies. Proin mattis blandit elit, in dignissim nunc tempor a.
+          <div className="loading-container">
+            <div className="loading-spinner" />
           </div>
         </div>
       </>
@@ -359,12 +377,10 @@ Etiam in lacus non lectus fringilla lobortis non a libero. Duis vel tincidunt ve
       <>
       <header className="sidebar-header">
         <h1 className="sidebar-title">{title || "Untitled"}</h1>
-        {description && <p className="sidebar-description">{description}</p>}
       </header>
       
       <div className="sidebar-content">
-        {/* TODO: change extract to Wiki Action Api section=0 */}
-        {extract && (
+        {summary && (
           <div className="sidebar-section" id="summary" onMouseEnter={() => {
             setQuizState({
               summary: true,

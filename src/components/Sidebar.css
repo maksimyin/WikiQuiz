@@ -52,7 +52,7 @@
   pointer-events: auto;
   touch-action: pan-y;
   transform: translateX(0);
-  transition: transform 0.3s ease, width 0.3s ease;
+  transition: transform 0.3s ease, width 0.4s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease;
   z-index: 999;
 }
 
@@ -320,4 +320,46 @@
 .back-arrow:hover {
   font-size: 16px;
   background-color: #DCDCDC;
+}
+
+
+
+body.wiki-ai-quiz-active .sidebar-toggle-button { display: none; }
+
+/* Full-width expansion when quiz is active */
+.sidebar-container.quiz-active {
+  width: 40vw !important;   /* slight enlargement */
+  max-width: 40vw !important;
+  box-shadow: -8px 0 32px rgba(0,0,0,0.18);
+}
+
+/* Slightly increased padding when enlarged */
+.sidebar-container.quiz-active .sidebar-header { padding: 1.25rem 1.5rem; }
+.sidebar-container.quiz-active .sidebar-content { padding: 1.25rem 1.5rem; }
+
+/* Dim backdrop */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(1px);
+  z-index: 998; /* just below sidebar (999) */
+  opacity: 0;
+  animation: sidebarBackDropFadeIn 180ms ease forwards;
+}
+
+@media (max-width: 980px) {
+  .sidebar-container.quiz-active {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .sidebar-backdrop { background: rgba(0,0,0,0.6); }
+}
+
+@keyframes sidebarBackDropFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

@@ -1,6 +1,6 @@
 export const SYSTEM_PROMPT = `
 You are a quiz-generation assistant. Output ONLY valid JSON in this format:
-{"questions":[{"question":"","options":["","","",""],"answer":"","citation":""}]}
+{"questions":[{"question":"","options":["","","",""],"answer":index # of correct option as a num,"citation":""}]} 
 
 Bucket A (Context):
 {BUCKET_A}
@@ -14,7 +14,7 @@ Bucket B (Outside-Facts):
 
 export const SYSTEM_PROMPT_ARTICLE_SPECIFIC = `
 You are a quiz-generation assistant. Output ONLY valid JSON in this format:
-{"questions":[{"question":"","options":["","","",""],"answer":"","citation":""}]}
+{"questions":[{"question":"","options":["","","",""],"answer":index # of correct option as a num,"citation":""}]}
 
 Topic: {TOPIC}
 {BUCKET_A}
@@ -28,8 +28,8 @@ Topic: {TOPIC}
 Generate 5 multiple-choice questions that:
 • Test a deep-level understanding of the passage
 • Have 4 clear, concise options
-• Include at least one question using outside knowledge
-• Cite sources as line numbers (1,2,3, etc.) or "G" for general knowledge
+• Challenge users to require critical thinking
+• Cite sources as ONLY line numbers (1,2,3, etc.)
 Output ONLY the JSON.
 `;
 
@@ -64,15 +64,15 @@ Output ONLY the JSON.
 //////// Section Prompts ////////
 
 export const SECTION_PROMPT_USER = `
-Section: {SECTION_TITLE}
 Topic: {TOPIC}
+Section: {SECTION_TITLE}
 
 Generate 5 multiple-choice questions that:
 • Focus specifically on this section's content and details
 • Test understanding of section-specific concepts and information
 • Have 4 clear, concise options per question
 • Use only information from the provided section content
-• Cite sources as line numbers (1,2,3, etc.) from the section
+• Cite sources as ONLY line numbers (1,2,3, etc.) from the section
 • Force Analytical Thinking
 
 Output ONLY the JSON.
