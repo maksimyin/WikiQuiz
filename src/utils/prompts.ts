@@ -1,6 +1,10 @@
 export const SYSTEM_PROMPT = `
 You are a quiz-generation assistant. Output ONLY valid JSON in this format:
-{"questions":[{"question":"","options":["","","",""],"answer":index # of correct option as a num,"citation":""}]} 
+{"questions":[{"question":"","options":["","","",""],"answer":index # of correct option as a number not string (0-3),"citation":"", "difficulty":"", "explanation":""}]} 
+Don't include A. B. C. D. in front of options or anything other than the information asked for
+Difficulty is measured on: easy, medium, hard, or extreme
+Make sure you ONLY return 5 valid JSON objects inside the questions array and nothing else
+
 
 Bucket A (Context):
 {BUCKET_A}
@@ -12,9 +16,13 @@ Bucket B (Outside-Facts):
 – Cite as "G"
 `;
 
+// foucs on better pormpt engineering to get better questions and better difficulty
 export const SYSTEM_PROMPT_ARTICLE_SPECIFIC = `
 You are a quiz-generation assistant. Output ONLY valid JSON in this format:
-{"questions":[{"question":"","options":["","","",""],"answer":index # of correct option as a num,"citation":""}]}
+{"questions":[{"question":"","options":["","","",""],"answer":index # of correct option as a number not string (0-3),"citation":"", "difficulty":"", "explanation":""}]}
+Don't include A. B. C. D. in front of options or anything other than the information asked for
+Difficulty is measured on: easy, medium, hard, or extreme
+Make sure you ONLY return 5 valid JSON objects inside the questions array and nothing else
 
 Topic: {TOPIC}
 {BUCKET_A}

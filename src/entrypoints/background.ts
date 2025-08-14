@@ -2,8 +2,10 @@ import { convert } from 'html-to-text';
 import * as prompts from '../utils/prompts';
 import { generateQuiz } from '../utils/ai-helper';
 import * as types from '../utils/types';
+import { WIKI_META_SECTION_TITLES, SELECTORS, NUM_QUESTIONS, isMetaSection } from '../utils/constants';
 
 export default defineBackground(() => {
+
 
   type PayloadMap =  {
     initialization: undefined,
@@ -62,8 +64,26 @@ export default defineBackground(() => {
       
       sendResponse(formattedData);
     },
-    // fix return type when ai thing finished
     getQuizContent: async (payload, sendResponse): Promise<boolean> => {
+      // error handling for LLM mistakes; if adding token system for users refund their tokens in case of error
+      function checkQuizContent(quizContent: types.QuizContent): boolean {
+        if (quizContent.questions.length !== NUM_QUESTIONS) {
+          sendResponse({"reply": "Not enough questions were generated. Please try again."})
+          return false;
+        }
+        quizContent.questions.forEach((question: any) => {
+          if (typeof(question) !== "object" || 
+              question.answer === undefined || question.answer === null ||
+              !question.question || 
+              !question.options || question.options.length !== 4 ||
+              !question.explanation) {
+            console.log(typeof(question), question.answer, question.question, question.options, question.explanation);
+            sendResponse({"reply": "Error generating quiz content. Please try again."})
+            return false;
+          }
+        });
+        return true;
+      }
       const { topic, bucket_a, url } = payload;
       console.log("bucket_a", bucket_a);
       if (typeof(bucket_a) === "number") {
@@ -82,7 +102,10 @@ export default defineBackground(() => {
             section_chopped[idx + 1] = sentence.trim();
           });
           console.log("section_chopped", section_chopped);
-          const quizContent: types.QuizContent = await sendAIChat(section_chopped, "section", topic, sectionTitle);
+          const quizContent = await sendAIChat(section_chopped, "section", topic, sectionTitle);
+          if (!checkQuizContent(quizContent)) {
+            return false;
+          }
           try {
             console.log("sent quizContent", quizContent);
             sendResponse({"reply": quizContent})
@@ -98,6 +121,9 @@ export default defineBackground(() => {
         console.log("summaryContent", summaryContent);
         if (summaryContent) {
           const quizContent = await sendAIChat(summaryContent, "summary", topic);
+          if (!checkQuizContent(quizContent)) {
+            return false;
+          }
           try {
             console.log("sent quizContent", quizContent);
             sendResponse({"reply": quizContent})
@@ -232,7 +258,14 @@ export default defineBackground(() => {
       TOPIC: topic,
       BUCKET_A: formatBucket(content)
     }), prompts.fillPrompt(prompts.SUMMARY_PROMPT_USER, {TOPIC: topic}))
-    return JSON.parse(quizContent.message.content[0].text); // subject to change based on different LLMs
+    let response = JSON.parse(quizContent.message.content[0].text); // subject to change based on different LLMs
+    console.log("response", response);
+    // fix bug where sometimes answer returned as string
+    response.questions.forEach((question: any) => {
+      question.answer = Number(question.answer);
+    });
+    
+    return response;
   }
 
   const toggleSidebar = async (payload: "local" | "session") => {
@@ -290,51 +323,7 @@ export default defineBackground(() => {
     }
   };
 
-  const SELECTORS = [
-    // Skip infoboxes, sidebars, navboxes, and ToC
-    { selector: 'table.infobox', format: 'skip' },
-    { selector: '.infobox', format: 'skip' },
-    { selector: 'table.vertical-navbox', format: 'skip' },
-    { selector: '.vertical-navbox', format: 'skip' },
-    { selector: 'table.sidebar', format: 'skip' },
-    { selector: '.sidebar', format: 'skip' },
-    { selector: 'table.navbox', format: 'skip' },
-    { selector: '.navbox', format: 'skip' },
-    { selector: '#toc', format: 'skip' },
-    { selector: '.toc', format: 'skip' },
-    // General cleanups and misc templates
-    { selector: '.mw-editsection', format: 'skip' },
-    { selector: '.reference', format: 'skip' },
-    { selector: '.error', format: 'skip' },
-    { selector: '.mw-empty-elt', format: 'skip' },
-    { selector: '.reflist', format: 'skip' },
-    { selector: '.navbox', format: 'skip' },
-    { selector: '.infobox', format: 'skip' },
-    { selector: '.hatnote', format: 'skip' },
-    { selector: '.citation', format: 'skip' },
-    { selector: 'sup', format: 'skip' },
-    { selector: '.printfooter', format: 'skip' },
-    { selector: '.catlinks', format: 'skip' },
-    { selector: '.thumbinner', format: 'skip' },
-    { selector: '.thumb', format: 'skip' },
-    { selector: '.thumbcaption', format: 'skip' },
-    { selector: '.caption', format: 'skip' },
-    { selector: '.gallery', format: 'skip' },
-    { selector: 'img', format: 'skip' },
-    { selector: '.mw-references-wrap', format: 'skip' },
-    { selector: 'figcaption', format: 'skip' },
-    { selector: '.magnify', format: 'skip' },
-    { selector: '.internal', format: 'skip' },
-    { selector: '.image-caption', format: 'skip' },
-    { selector: '.gallerytext', format: 'skip' },
-    { selector: '.shortdescription', format: 'skip' },
-    { selector: '.metadata', format: 'skip' },
-    { selector: '.sistersitebox', format: 'skip' },
-    { selector: '.rellink', format: 'skip' },
-    { selector: '.ambox', format: 'skip' },
-    { selector: '.mbox', format: 'skip' },
-    { selector: 'a', format: 'inline', options: { ignoreHref: true } }
-  ]
+  
   
 
   // create a general function to convert html to text and then text to sentences for summary change from extract to section=0; then clean up frontend
@@ -449,6 +438,8 @@ export default defineBackground(() => {
   }
 
   const fetchAllData = async (title: string, currentUrl: string) => {
+    // helper to check if section is meta section case insensitive
+    
     if (currentUrl.includes("wikipedia.org/wiki/Main_Page")) {
       return false;
     }
@@ -519,7 +510,22 @@ export default defineBackground(() => {
           }
         });
       }
+      let sections = sectionsData.parse?.sections || [];
 
+      // remove tags from section lines
+      sections.forEach((section: WikiSection) => {
+        section.line = section.line.replace(/<[^>]*>?/g, '').trim();
+      });
+
+      // Remove sections that are meta sections and remove 2nd+ instance of a duplicate section.line
+      const seenSectionLines = new Set<string>();
+      sections = sections.filter((section: WikiSection) => {
+        if (isMetaSection(section.line)) return false;
+        if (seenSectionLines.has(section.line)) return false;
+        seenSectionLines.add(section.line);
+        return true;
+      });
+      
       const parsedTitle = summaryData?.parse?.title ?? title;
       console.log("summarySentences", summarySentences);
       console.log("parsedTitle", parsedTitle);
@@ -527,7 +533,7 @@ export default defineBackground(() => {
       await browser.storage.session.set({
         [`title_${currentUrl}`]: parsedTitle,
         [`summary_${currentUrl}`]: summarySentences,
-        [`sections_${currentUrl}`]: sectionsData.parse?.sections,
+        [`sections_${currentUrl}`]: sections,
         [`metadata_${currentUrl}`]: {
           timestamp: timeStamp,
           url: currentUrl,

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import './Sidebar.css';
 import { IoMdArrowBack } from "react-icons/io";
-import { IoDocumentTextOutline } from "react-icons/io5";
+import { BsFileEarmarkText } from "react-icons/bs";
 import { IoMdMenu, IoMdClose } from "react-icons/io";
 import * as types from '../utils/types';
+import Loading from './Loading';
 
 const Sidebar = () => {
   const [sections, setSections] = useState<any[]>([]);
@@ -14,6 +15,9 @@ const Sidebar = () => {
   const [quizContent, setQuizContent] = useState<types.QuizContent | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
+  const [showResults, setShowResults] = useState(false);
+  const [animatingFinish, setAnimatingFinish] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // Don't render sidebar on Wikipedia main page
   if (window.location.pathname === '/wiki/Main_Page') {
@@ -46,14 +50,8 @@ const Sidebar = () => {
     section_index: undefined
   });
 
-  // Add/remove body class when quiz is active to allow global styling (e.g., hide toggle)
-  useEffect(() => {
-    if (quizMode.quizGeneration) {
-      document.body.classList.add('wiki-ai-quiz-active');
-    } else {
-      document.body.classList.remove('wiki-ai-quiz-active');
-    }
-  }, [quizMode.quizGeneration]);
+
+
 
   type QuizState = {
     summary: boolean;
@@ -122,9 +120,8 @@ const Sidebar = () => {
   useEffect(() => {
     async function getQuizContent() {
       if (quizMode.quizGeneration) {
-        // Reset quiz content to ensure loading state until fresh content arrives
         setQuizContent(null);
-        const quizContent: {reply: types.QuizContent} = await browser.runtime.sendMessage({
+        const quizContent: {reply: types.QuizContent | string} = await browser.runtime.sendMessage({
           type: 'getQuizContent',
           payload: {
             topic: title,
@@ -133,8 +130,12 @@ const Sidebar = () => {
             url: window.location.href
           }
         })
-        console.log("quizContent", quizContent);
-        setQuizContent(quizContent.reply);
+        if (typeof quizContent.reply === "string") {
+           setQuizContent(null);
+           setError(quizContent.reply);
+         } else {
+           setQuizContent(quizContent.reply);
+         }
       }
   }
   getQuizContent();
@@ -143,12 +144,14 @@ const Sidebar = () => {
  
   if (isLoading) {
     return (
-      <div className="sidebar-container">
-        <div className="loading-container">
-          <div className="loading-spinner" />
-        </div>
-      </div>
-    );
+      <button 
+        className={`sidebar-toggle-button ${isCollapsed ? 'collapsed' : 'expanded'} ${quizMode.quizGeneration ? 'quiz-active' : ''}`}
+        onClick={handleToggleClick}
+        title={isCollapsed ? "Open Sidebar" : "Close Sidebar"}
+      >
+        {isCollapsed ? <IoMdMenu /> : <IoMdClose />}
+      </button>
+    )
   }
 
   const noHoverState = {
@@ -183,6 +186,29 @@ const Sidebar = () => {
   const resetQuizView = () => {
     setCurrentQuestionIndex(0);
     setSelectedAnswers({});
+    setShowResults(false);
+    setAnimatingFinish(false);
+  };
+
+  const handleFinishQuiz = () => {
+    setAnimatingFinish(true);
+    setTimeout(() => {
+      setShowResults(true);
+      setAnimatingFinish(false);
+    }, 800); 
+  };
+
+  const calculateScore = () => {
+    if (!quizContent || !quizContent.questions) return { correct: 0, total: 0, percentage: 0 };
+    
+    const correct = quizContent.questions.reduce((count, question, index) => {
+      return selectedAnswers[index] === question.answer ? count + 1 : count;
+    }, 0);
+    
+    const total = quizContent.questions.length;
+    const percentage = Math.round((correct / total) * 100);
+    
+    return { correct, total, percentage };
   };
 
   // separating sections by subsections
@@ -280,9 +306,9 @@ const Sidebar = () => {
                     section_index: Number(section.index)
                   })
                 }}
-                title="Article Quiz"
+                title="Generate Quiz"
               >
-                <IoDocumentTextOutline />
+                <BsFileEarmarkText />
               </button>
             </div>
           )}
@@ -300,26 +326,28 @@ const Sidebar = () => {
   };
 
   
-
+  
 
   // need to add two buttons to the sidebar: one to toggle dark mode and one to toggle sidebar visibility
   // add functionality to toggle dark mode and sidebar visibility
   // later, consider adding feature to shrink and expand sidebar (hard to implement bc/ of shadow dom)
   // work on sidebar styles
     //before production make cleaner especially left hand bar
+
+  // Tomorrow: save quizContent to local storage and load it from local storage
   return (
     <>
       {/* Floating toggle button */}
       <button 
-        className={`sidebar-toggle-button ${isCollapsed ? 'collapsed' : 'expanded'}`}
+        className={`sidebar-toggle-button ${isCollapsed ? 'collapsed' : 'expanded'} ${quizMode.quizGeneration ? 'quiz-active' : ''}`}
         onClick={handleToggleClick}
         title={isCollapsed ? "Open Sidebar" : "Close Sidebar"}
       >
         {isCollapsed ? <IoMdMenu /> : <IoMdClose />}
       </button>
 
-      {/* Dim backdrop during quiz */}
-      {quizMode.quizGeneration && !isCollapsed && <div className="sidebar-backdrop" />}
+      {/* Dim backdrop during quiz; consider adding unblur animation*/}
+      {quizMode.quizGeneration && !isCollapsed && !showResults && <div className="sidebar-backdrop" />}
 
       {/* Main sidebar content */}
       <div className={`sidebar-container ${isCollapsed ? 'collapsed' : 'expanded'} ${quizMode.quizGeneration ? 'quiz-active' : ''}`}>
@@ -367,10 +395,177 @@ const Sidebar = () => {
             </div>
           )}
         </header>
+        {/* Quiz content body */}
         <div className="sidebar-content">
-          <div className="loading-container">
-            <div className="loading-spinner" />
-          </div>
+          {quizContent ? (
+            <div className={`quiz-container ${animatingFinish ? 'finishing' : ''}`}>
+               {showResults ? (
+                    <div className="quiz-results">
+                  <div className="quiz-score-card">
+                    <h2 className="quiz-score-title">Quiz Results</h2>
+                    <div className="quiz-score-circle">
+                      <span className="quiz-score-number">{calculateScore().percentage}%</span>
+                    </div>
+                    <p className="quiz-score-text">
+                      You got {calculateScore().correct} out of {calculateScore().total} questions correct
+                    </p>
+                  </div>
+
+                  <div className="quiz-answers-review">
+                    <h3 className="quiz-review-title">Review Answers</h3>
+                    {quizContent.questions.map((question, index) => {
+                      const userAnswer = selectedAnswers[index];
+                      const isCorrect = userAnswer === question.answer;
+                      
+                      return (
+                        <div key={index} className={`quiz-answer-item ${isCorrect ? 'correct' : 'incorrect'}`}>
+                          <div className="quiz-answer-header">
+                            <span className="quiz-answer-number">Q{index + 1}</span>
+                            <span className={`quiz-answer-status ${isCorrect ? 'correct' : 'incorrect'}`}>
+                              {isCorrect ? '✓' : '✗'}
+                            </span>
+                          </div>
+                          
+                          <p className="quiz-answer-question">{question.question}</p>
+                          
+                          <div className="quiz-answer-options">
+                            {question.options.map((option, optionIndex) => {
+                              const isUserChoice = userAnswer === optionIndex;
+                              const isCorrectAnswer = question.answer === optionIndex;
+                              
+                              let className = 'quiz-answer-option';
+                              if (isCorrectAnswer) className += ' correct-answer';
+                              if (isUserChoice && !isCorrectAnswer) className += ' user-wrong';
+                              if (isUserChoice && isCorrectAnswer) className += ' user-correct';
+                              
+                              return (
+                                <div key={optionIndex} className={className}>
+                                  <span className="quiz-option-letter">
+                                    {String.fromCharCode(65 + optionIndex)}
+                                  </span>
+                                  <span className="quiz-option-text">{option}</span>
+                                  {isCorrectAnswer && <span className="correct-indicator">✓</span>}
+                                  {isUserChoice && !isCorrectAnswer && <span className="wrong-indicator">✗</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          
+                          {question.explanation && (
+                            <div className="quiz-answer-explanation">
+                              <strong>Explanation:</strong> {question.explanation}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="quiz-action-buttons">
+                    <button 
+                      className="end-quiz-button restart" 
+                      onClick={resetQuizView}
+                    >
+                      Take Quiz Again
+                    </button>
+                    <button 
+                      className="end-quiz-button exit"
+                      onClick={() => {
+                        //save quiz content to local storage
+                        setQuizMode({
+                          quizGeneration: false,
+                          quizType: undefined,
+                          clickedElement: undefined,
+                          section_index: undefined
+                        })
+                        resetQuizView();
+                      }}
+                    >
+                      Return to Sidebar
+                    </button>
+                  </div>
+                </div> 
+                ) : (
+                /* Quiz */
+                <>
+                {/* add error message here */}
+                {error ? (
+                  <div className="sidebar-section">
+                  <p className="section-content">No sections available. Please reload page in case of rendering issues.</p>
+                </div>
+                ) : (
+                  <>
+                  <div className="quiz-progress">
+                    <div className="quiz-progress-bar">
+                      <div 
+                        className="quiz-progress-fill" 
+                        style={{ width: `${((currentQuestionIndex + 1) / totalQuestions) * 100}%` }}
+                      />
+                    </div>
+                    <span className="quiz-progress-text">
+                      Question {currentQuestionIndex + 1} of {totalQuestions}
+                    </span>
+                  </div>
+
+                  {currentQuestion && (
+                    <div className="quiz-question-container">
+                      <div className="quiz-question">
+                        <h3 className="quiz-question-text">{currentQuestion.question}</h3>
+                        {currentQuestion.difficulty && (
+                          <p className="quiz-difficulty">Difficulty: {currentQuestion.difficulty}</p>
+                        )}
+                      </div>
+
+                      <div className="quiz-options">
+                        {currentQuestion.options.map((option, index) => {
+                          const isSelected = selectedAnswers[currentQuestionIndex] === index;
+                          return (
+                            <button
+                              key={index}
+                              className={`quiz-option ${isSelected ? 'selected' : ''}`}
+                              onClick={() => handleSelectOption(index)}
+                            >
+                              <span className="quiz-option-letter">
+                                {String.fromCharCode(65 + index)}
+                              </span>
+                              <span className="quiz-option-text">{option}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="quiz-navigation">
+                        <button 
+                          className="quiz-nav-button quiz-nav-prev" 
+                          onClick={goPrev}
+                          disabled={currentQuestionIndex === 0}
+                        >
+                          Previous
+                        </button>
+                        <button 
+                          className="quiz-nav-button quiz-nav-next" 
+                          onClick={goNext}
+                          disabled={currentQuestionIndex === totalQuestions - 1}
+                        >
+                          Next
+                        </button>
+                      </div>
+
+                      {currentQuestionIndex === totalQuestions - 1 && (
+                        <button className="quiz-finish-button" onClick={handleFinishQuiz}>
+                          Check Answers
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  </>
+                )}
+                </>
+              )}
+            </div>
+          ) : (
+            <Loading />
+          )}
         </div>
       </>
     ) : (
@@ -408,7 +603,7 @@ const Sidebar = () => {
                   })
                 }}
               >
-                Create Quiz
+                <BsFileEarmarkText />
               </button>
               </div>
             )}
