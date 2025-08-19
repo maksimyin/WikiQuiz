@@ -76,7 +76,7 @@ export const SELECTORS = [
     { selector: 'a', format: 'inline', options: { ignoreHref: true } }
   ]
 
-export const NUM_QUESTIONS = 5;
+
 
 // Normalize titles for reliable comparison
 const normalizeTitle = (title: string): string =>

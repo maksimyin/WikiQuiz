@@ -1,8 +1,11 @@
 import { convert } from 'html-to-text';
 import * as prompts from '../utils/prompts';
-import { generateQuiz } from '../utils/ai-helper';
+import { generateQuizGemini } from '../utils/ai-helper';
 import * as types from '../utils/types';
-import { WIKI_META_SECTION_TITLES, SELECTORS, NUM_QUESTIONS, isMetaSection } from '../utils/constants';
+import { SELECTORS, isMetaSection } from '../utils/constants';
+import type { WikiSection, StorageMetadata, StorageSchema } from '../utils/types';
+import { createStorageKeys } from '../utils/types';
+import { sessionStorage, getUserSettings, updateUserSettings } from '../utils/storage';
 
 export default defineBackground(() => {
 
@@ -19,10 +22,18 @@ export default defineBackground(() => {
       url: string
     },
     toggleSidebar: "local" | "session",
-    getSidebarState: "local" | "session"
+    getSidebarState: "local" | "session",
+    toggleSettings: {
+      questionDifficulty: "recall" | "stimulating" | "synthesis",
+      numQuestions: 4 | 7
+    },
+    getSettings: {
+      questionDifficulty: "recall" | "stimulating" | "synthesis",
+      numQuestions: 4 | 7
+    }
   } // add more when we shape more payloads
 
-  type ResponseData = Record<string, string | number | boolean | types.QuizContent>;
+  type ResponseData = Record<string, any>;
   type SendResponse = (response: ResponseData) => void;
 
   type Handler<T> = (payload: T, sendResponse: SendResponse) => void;
@@ -37,37 +48,38 @@ export default defineBackground(() => {
     getData: async (payload, sendResponse) => {
       let { url } = payload;
       url = url.match(idRegex)?.[0] || url;
-      const storageKeys = [`title_${url}`, `description_${url}`, `summary_${url}`, `sections_${url}`, `metadata_${url}`];
-      let data = await browser.storage.session.get(storageKeys);
+      
+      // Use typed storage to get wiki page data
+      let data = await sessionStorage.getWikiPageData(url);
 
       // If no data or data is outdated, fetch it
-      if (!data[`title_${url}`] || 
-          !data[`sections_${url}`] || 
-          !data[`metadata_${url}`]?.timestamp ||
-          Date.now() - data[`metadata_${url}`].timestamp >= 1000 * 60 * 60) {
+      if (!data.title || 
+          !data.sections || 
+          !data.metadata?.timestamp ||
+          Date.now() - data.metadata.timestamp >= 1000 * 60 * 60) {
         
         const title = decodeURIComponent(new URL(url).pathname.replace("/wiki/", ""));
         const fetched = await fetchAllData(title, url);
         if (fetched) {
           // Get the fresh data
-          data = await browser.storage.session.get(storageKeys);
+          data = await sessionStorage.getWikiPageData(url);
         }
       }
 
-      // Format the response data
-      const formattedData: any = {};
-      for (const key in data) {
-        // remove _${url} from key
-        const newKey = key.replace(`_${url}`, "");
-        formattedData[newKey] = data[key];
-      }
+      // Format the response data (ensure all fields are defined)
+      const formattedData: ResponseData = {
+        title: data.title || "",
+        summary: data.summary || {},
+        sections: data.sections || [],
+        metadata: data.metadata || { timestamp: 0, url: "", title: "" }
+      };
       
       sendResponse(formattedData);
     },
     getQuizContent: async (payload, sendResponse): Promise<boolean> => {
       // error handling for LLM mistakes; if adding token system for users refund their tokens in case of error
-      function checkQuizContent(quizContent: types.QuizContent): boolean {
-        if (quizContent.questions.length !== NUM_QUESTIONS) {
+      function checkQuizContent(quizContent: types.QuizContent, expectedQuestions: number): boolean {
+        if (quizContent.questions.length !== expectedQuestions) {
           sendResponse({"reply": "Not enough questions were generated. Please try again."})
           return false;
         }
@@ -85,43 +97,66 @@ export default defineBackground(() => {
         return true;
       }
       const { topic, bucket_a, url } = payload;
+      
+      // Get settings from storage using typed storage
+      const settings = await getUserSettings();
+      const numQuestions = settings.numQuestions;
+      
       console.log("bucket_a", bucket_a);
       if (typeof(bucket_a) === "number") {
         let sectionContent = await getSectionContent(topic, bucket_a, url);
-        let sectionTitle = sectionContent?.[1] || "";
-        sectionContent = sectionContent?.[0] || "";
-        if (sectionContent && sectionContent.includes("No content available")) {
+        if (typeof(sectionContent) === "string") {
           sendResponse({"reply": sectionContent})
           return false
-        } else if (sectionContent) {
-          let section_chopped: Record<number, string> = {};
-          const sentences = sectionContent.match(
-            /(?=[^])(?:\P{Sentence_Terminal}|\p{Sentence_Terminal}(?!['"`\p{Close_Punctuation}\p{Final_Punctuation}\s]))*(?:\p{Sentence_Terminal}+['"`\p{Close_Punctuation}\p{Final_Punctuation}]*|$)/gu
-          ) || [sectionContent];
-          sentences.forEach((sentence, idx) => {
-            section_chopped[idx + 1] = sentence.trim();
-          });
-          console.log("section_chopped", section_chopped);
-          const quizContent = await sendAIChat(section_chopped, "section", topic, sectionTitle);
-          if (!checkQuizContent(quizContent)) {
-            return false;
-          }
-          try {
-            console.log("sent quizContent", quizContent);
-            sendResponse({"reply": quizContent})
-            return true;
-          } catch (error) {
-            console.error("Error sending quiz content:", error);
-            sendResponse({"reply": "Error generating quiz content"})
-            return false;
-          }
         }
+        let sectionTitle = sectionContent?.[1] || "";
+        sectionContent = sectionContent?.[0] || "";
+        
+        let section_chopped: Record<number, string> = {};
+        const sentences = sectionContent.match(
+          /(?=[^])(?:\P{Sentence_Terminal}|\p{Sentence_Terminal}(?!['"`\p{Close_Punctuation}\p{Final_Punctuation}\s]))*(?:\p{Sentence_Terminal}+['"`\p{Close_Punctuation}\p{Final_Punctuation}]*|$)/gu
+        ) || [sectionContent];
+        sentences.forEach((sentence, idx) => {
+          section_chopped[idx + 1] = sentence.trim();
+        });
+        console.log("section_chopped", section_chopped);
+        if (Object.keys(section_chopped).length < 7) {
+          sendResponse({"reply": `Not enough content in section "${sectionTitle}" to generate a quiz`})
+          return false;
+        }
+        const quizContent = await sendAIChat(section_chopped, "section", topic, sectionTitle);
+        console.log("quizContent", quizContent);
+        if (!quizContent) {
+          sendResponse({"reply": "Error generating quiz content"})
+          return false;
+        }
+        if (!checkQuizContent(quizContent, numQuestions)) {
+          return false;
+        }
+        try {
+          console.log("sent quizContent", quizContent);
+          sendResponse({"reply": quizContent})
+          return true;
+        } catch (error) {
+          console.error("Error sending quiz content:", error);
+          sendResponse({"reply": "Error generating quiz content"})
+          return false;
+        }
+
       } else if (typeof(bucket_a) === "object") {
         const summaryContent = bucket_a
         console.log("summaryContent", summaryContent);
         if (summaryContent) {
+          if (Object.keys(summaryContent).length < 7) {
+            sendResponse({"reply": "Not enough content in Introduction to generate a quiz"})
+            return false;
+          }
           const quizContent = await sendAIChat(summaryContent, "summary", topic);
-          if (!checkQuizContent(quizContent)) {
+          if (!quizContent) {
+            sendResponse({"reply": "Error generating quiz content"})
+            return false;
+          }
+          if (!checkQuizContent(quizContent, numQuestions)) {
             return false;
           }
           try {
@@ -149,6 +184,25 @@ export default defineBackground(() => {
     getSidebarState: (payload, sendResponse): void => {
       getSidebarState(payload).then((enabled) => {
         sendResponse({"sidebarEnabled": enabled})
+      })
+    },
+    toggleSettings: async (payload, sendResponse): Promise<void> => {
+      const { questionDifficulty, numQuestions } = payload;
+      console.log("toggleSettings", questionDifficulty, numQuestions);
+      
+      // Use typed storage for settings
+      await updateUserSettings({
+        questionDifficulty: questionDifficulty,
+        numQuestions: numQuestions
+      });
+      
+      sendResponse({"success": true})
+    },
+    getSettings: async (payload, sendResponse): Promise<void> => {
+      const settings = await getUserSettings();
+      sendResponse({
+        "questionDifficulty": settings.questionDifficulty, 
+        "numQuestions": settings.numQuestions
       })
     }
   }
@@ -184,21 +238,7 @@ export default defineBackground(() => {
       title: string,
     }
   }
-  interface WikiSection {
-    anchor: string,
-    fromtitle: string,
-    index: number,
-    level: number,
-    line: string,
-    number: number,
-    toclevel: number,
-  }
 
-  interface StorageMetadata {
-    timestamp: number;
-    url: string;
-    title: string;
-  }
 
   interface RequestQueue {
     [key: string]: {
@@ -238,34 +278,76 @@ export default defineBackground(() => {
   const MIN_REQUEST_INTERVAL = 1000; 
 
   // TODO: Use utils functions to send section/summary to Cohere
-  const sendAIChat = async (content: Record<number, string>, type: "section" | "summary", topic: string, sectionTitle?: string): Promise<types.QuizContent> => {
+  const sendAIChat = async (content: Record<number, string>, type: "section" | "summary", topic: string, sectionTitle?: string): Promise<types.QuizContent | null> => {
     function formatBucket(sentences: Record<number, string>) {
       return Object.entries(sentences)
         .map(([n, line]) => `${n}. ${line}`)
         .join('\n');
     }
 
+    // Get settings from storage using typed storage
+    const settings = await getUserSettings();
+    const questionDifficulty = settings.questionDifficulty;
+    const numQuestions = settings.numQuestions;
 
-    const quizContent: any = type === "section" ? 
-    await generateQuiz(prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
-      TOPIC: topic,
-      BUCKET_A: formatBucket(content)
-    }), prompts.fillPrompt(prompts.SECTION_PROMPT_USER, {
-      TOPIC: topic,
-      SECTION_TITLE: sectionTitle || ""}))
-     :
-    await generateQuiz(prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
-      TOPIC: topic,
-      BUCKET_A: formatBucket(content)
-    }), prompts.fillPrompt(prompts.SUMMARY_PROMPT_USER, {TOPIC: topic}))
-    let response = JSON.parse(quizContent.message.content[0].text); // subject to change based on different LLMs
-    console.log("response", response);
-    // fix bug where sometimes answer returned as string
-    response.questions.forEach((question: any) => {
-      question.answer = Number(question.answer);
-    });
-    
-    return response;
+    // consider using: https://docs.boundaryml.com/guide/installation-language/typescript for json verification for gemini
+    // use generateQuiz for general testing
+    // Add settings (question variabvility and difficulty)
+    try {
+      const prompt = type === "section" 
+        ? (questionDifficulty === "recall" ? prompts.USER_SECTION : questionDifficulty === "stimulating" ? prompts.USER_SECTION_COMPLEX : prompts.USER_SECTION_EXTREME)
+        : (questionDifficulty === "recall" ? prompts.USER_SUMMARY : questionDifficulty === "stimulating" ? prompts.USER_SUMMARY_COMPLEX : prompts.USER_SUMMARY_EXTREME);
+      
+      const quizContent: any = type === "section" ? 
+      await generateQuizGemini(prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
+        TOPIC: topic,
+        BUCKET_A: formatBucket(content)
+              }), prompts.fillPrompt(prompt, {
+          NUM_QUESTIONS: numQuestions.toString(),
+          TOPIC: topic,
+          SECTION_TITLE: sectionTitle || ""}))
+         :
+        await generateQuizGemini(prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
+          TOPIC: topic,
+          BUCKET_A: formatBucket(content)
+        }), prompts.fillPrompt(prompt, {
+          NUM_QUESTIONS: numQuestions.toString(),
+          TOPIC: topic}))
+
+      
+      if (!quizContent || !quizContent.candidates || !quizContent.candidates[0] || !quizContent.candidates[0].content) {
+        console.error("Invalid quiz content structure:", quizContent);
+        return null;
+      }
+
+      const responseText = quizContent.candidates[0].content.parts[0].text;
+      console.log("Raw response text:", responseText);
+      
+      let response;
+      try {
+        response = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("JSON parse error:", parseError);
+        console.error("Raw response that failed to parse:", responseText);
+        return null;
+      }
+      
+      console.log("Parsed response:", response);
+      
+      if (!response || !response.questions || !Array.isArray(response.questions)) {
+        console.error("Invalid response structure or too few tokens");
+        return null;
+      }
+      
+      response.questions.forEach((question: any) => {
+        question.answer = Number(question.answer);
+      });
+      
+      return response;
+    } catch (error) {
+      console.error("Error in sendAIChat:", error);
+      return null;
+    }
   }
 
   const toggleSidebar = async (payload: "local" | "session") => {
@@ -327,7 +409,7 @@ export default defineBackground(() => {
   
 
   // create a general function to convert html to text and then text to sentences for summary change from extract to section=0; then clean up frontend
-  const getSectionContent = async (topic: string, section_index: number, pageUrl: string): Promise<[string, string] | string | null> => {
+  const getSectionContent = async (topic: string, section_index: number, pageUrl: string): Promise<[string, string] | string> => {
     try {
       pageUrl = pageUrl.match(idRegex)?.[0] || pageUrl;
       console.log("pageUrl", pageUrl);
@@ -338,22 +420,19 @@ export default defineBackground(() => {
       
       const currentSection = sections.find((s: WikiSection) => Number(s.index) === Number(section_index));
       if (!currentSection) {
-        console.error("Section not found in stored sections");
-        return null;
+        return `Section not found in stored sections`;
       }
 
       const api_url = `https://en.wikipedia.org/w/api.php?origin=*&format=json&action=parse&page=${encodeURIComponent(topic)}&prop=text&section=${section_index}`;
       
       const sectionHTML = await makeWikipediaRequest(api_url);
       if (!sectionHTML.ok) {
-        console.error("Wikipedia API request failed:", sectionHTML.status);
-        return null;
+        return `Wikipedia API request failed: ${sectionHTML.status}`;
       }
 
       const sectionHTMLData: Section_Api_Response = await sectionHTML.json();
       if (!sectionHTMLData.parse?.text["*"]) {
-        console.error("Invalid response from Wikipedia API");
-        return null;
+        return `Invalid response from Wikipedia API`;
       }
 
       const sectionText = convert(sectionHTMLData.parse.text["*"], {
@@ -388,34 +467,43 @@ export default defineBackground(() => {
         if (subsections.length > 0) {
           const firstSubsection = subsections[0];
           const subsectionTitle = firstSubsection.line;
+          console.log(firstSubsection, subsectionTitle)
           if (subsectionTitle) {
-            const regex = new RegExp(`\\ ${subsectionTitle.toUpperCase()}\\b`, 'm');
+            // Use regex without word boundaries since subsection titles may not have clear boundaries
+            const escapedTitle = subsectionTitle.replace(/[()]/g, '\\$&').replace(/[–—-]/g, '[–—-]').replace(/\s+/g, '\\s+');
+            const regex = new RegExp(escapedTitle, 'mi');
+            console.log('Searching for subsection:', subsectionTitle);
+            console.log('Using regex:', regex);
+            
             const match = cleanText.search(regex);
+            console.log('Match found at position:', match);
             if (match !== -1) {
-              cleanText = cleanText.substring(0, match + 1).trim();
+              // Cut text right before the subsection title
+              cleanText = cleanText.substring(0, match).trim();
+              console.log('Text cut to length:', cleanText.length);
             }
           }
         }
       }
+
 
       if (currentSection.line) {
         const sectionTitleRegex = new RegExp(`${currentSection.line.toUpperCase()}\\b`, 'g');
         cleanText = cleanText.replace(sectionTitleRegex, '').trim();
       }
 
+
       if (!cleanText || cleanText.length === 0) {
-        console.log("No content available for section", currentSection.line);
         return `No content available for section "${currentSection.line}"`;
       }
 
       return [cleanText, currentSection.line];
     } catch (fetchError: any) {
       if (fetchError.name === 'AbortError') {
-        console.error("Wikipedia API request timed out");
+        return `Wikipedia API request timed out`;
       } else {
-        console.error("Error fetching from Wikipedia API:", fetchError);
+        return `Error fetching from Wikipedia API: ${fetchError}`;
       }
-      return null;
     }
   };
 
@@ -445,14 +533,14 @@ export default defineBackground(() => {
     }
     currentUrl = currentUrl.match(idRegex)?.[0] || currentUrl;
     try {
-      const storageKeys = [`title_${currentUrl}`, `description_${currentUrl}`, `extract_${currentUrl}`, `sections_${currentUrl}`, `metadata_${currentUrl}`];
-      const existingData = await browser.storage.session.get(storageKeys);
+      // Check existing data using typed storage
+      const existingData = await sessionStorage.getWikiPageData(currentUrl);
       
 
-      if (existingData[`title_${currentUrl}`] && 
-          existingData[`sections_${currentUrl}`] && 
-          existingData[`metadata_${currentUrl}`]?.timestamp && 
-          Date.now() - existingData[`metadata_${currentUrl}`].timestamp < 1000 * 60 * 60) {
+      if (existingData.title && 
+          existingData.sections && 
+          existingData.metadata?.timestamp && 
+          Date.now() - existingData.metadata.timestamp < 1000 * 60 * 60) {
           console.log("data = fresh");
         return true;
       }
@@ -509,6 +597,8 @@ export default defineBackground(() => {
             summarySentences[idx + 1] = trimmed;
           }
         });
+        // make sure there are at least 7 sentences
+
       }
       let sections = sectionsData.parse?.sections || [];
 
@@ -527,14 +617,14 @@ export default defineBackground(() => {
       });
       
       const parsedTitle = summaryData?.parse?.title ?? title;
-      console.log("summarySentences", summarySentences);
-      console.log("parsedTitle", parsedTitle);
+      
       const timeStamp = Date.now();
-      await browser.storage.session.set({
-        [`title_${currentUrl}`]: parsedTitle,
-        [`summary_${currentUrl}`]: summarySentences,
-        [`sections_${currentUrl}`]: sections,
-        [`metadata_${currentUrl}`]: {
+      // Use typed storage to set wiki page data
+      await sessionStorage.setWikiPageData(currentUrl, {
+        title: parsedTitle,
+        summary: summarySentences,
+        sections: sections,
+        metadata: {
           timestamp: timeStamp,
           url: currentUrl,
           title: parsedTitle

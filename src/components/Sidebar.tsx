@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './Sidebar.css';
 import { IoMdArrowBack } from "react-icons/io";
 import { BsFileEarmarkText } from "react-icons/bs";
-import { IoMdMenu, IoMdClose } from "react-icons/io";
+import { IoMdMenu, IoMdClose, IoMdSettings } from "react-icons/io";
+import { HiOutlineEye, HiOutlineEyeOff } from "react-icons/hi";
 import * as types from '../utils/types';
 import Loading from './Loading';
+import { browser } from 'wxt/browser';
 
 const Sidebar = () => {
   const [sections, setSections] = useState<any[]>([]);
@@ -18,6 +20,13 @@ const Sidebar = () => {
   const [showResults, setShowResults] = useState(false);
   const [animatingFinish, setAnimatingFinish] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
+  const [questionDifficulty, setQuestionDifficulty] = useState<'recall' | 'stimulating' | 'synthesis'>('stimulating');
+  const [numQuestions, setNumQuestions] = useState<4 | 7>(4);
+  const [isViewingArticle, setIsViewingArticle] = useState(false);
+  const [sidebarContentElement, setSidebarContentElement] = useState<HTMLDivElement | null>(null);
+  
   
   // Don't render sidebar on Wikipedia main page
   if (window.location.pathname === '/wiki/Main_Page') {
@@ -113,7 +122,12 @@ const Sidebar = () => {
       setIsCollapsed(!enabled.sidebarEnabled);
     }
     getSidebarEnabled();
-
+    async function getSettings() {
+      const settings = await browser.runtime.sendMessage({ type: 'getSettings', payload: 'session' });
+      setQuestionDifficulty(settings.questionDifficulty);
+      setNumQuestions(settings.numQuestions);
+    }
+    getSettings();
  
   }, []);
 
@@ -121,6 +135,29 @@ const Sidebar = () => {
     async function getQuizContent() {
       if (quizMode.quizGeneration) {
         setQuizContent(null);
+        setError(null);
+        
+        // Reset scroll to top when quiz generation starts
+        // For shadow DOM, we need to use state to track the content element
+        const scrollToTop = () => {
+          console.log('Attempting scroll reset...');
+          console.log('sidebarContentElement:', sidebarContentElement);
+          
+          if (sidebarContentElement) {
+            console.log('Current scrollTop:', sidebarContentElement.scrollTop);
+            sidebarContentElement.scrollTop = 0;
+            console.log('After reset scrollTop:', sidebarContentElement.scrollTop);
+          } else {
+            console.log('Could not find sidebar content element - element is null');
+          }
+        };
+        
+        // Immediate scroll reset
+        scrollToTop();
+        
+        // Also try after a short delay in case the DOM hasn't updated yet
+        setTimeout(scrollToTop, 50);
+        
         const quizContent: {reply: types.QuizContent | string} = await browser.runtime.sendMessage({
           type: 'getQuizContent',
           payload: {
@@ -131,10 +168,12 @@ const Sidebar = () => {
           }
         })
         if (typeof quizContent.reply === "string") {
+          console.log(quizContent.reply)
            setQuizContent(null);
            setError(quizContent.reply);
          } else {
            setQuizContent(quizContent.reply);
+           setError(null); 
          }
       }
   }
@@ -174,12 +213,14 @@ const Sidebar = () => {
   const goNext = () => {
     if (currentQuestionIndex < (totalQuestions - 1)) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
+      setIsViewingArticle(false); // Re-blur article when moving to next question
     }
   };
 
   const goPrev = () => {
     if (currentQuestionIndex > 0) {
       setCurrentQuestionIndex(currentQuestionIndex - 1);
+      setIsViewingArticle(false); // Re-blur article when moving to previous question
     }
   };
 
@@ -347,29 +388,20 @@ const Sidebar = () => {
       </button>
 
       {/* Dim backdrop during quiz; consider adding unblur animation*/}
-      {quizMode.quizGeneration && !isCollapsed && !showResults && <div className="sidebar-backdrop" />}
+      {quizMode.quizGeneration && !isCollapsed && !showResults && !isViewingArticle && <div className="sidebar-backdrop" />}
 
       {/* Main sidebar content */}
       <div className={`sidebar-container ${isCollapsed ? 'collapsed' : 'expanded'} ${quizMode.quizGeneration ? 'quiz-active' : ''}`}>
         {quizMode.quizGeneration ? (
           <>
-        <header className="sidebar-header">
-          {quizMode.clickedElement === "summary" ? (
-            <div className="sidebar-section">
-            <IoMdArrowBack className="quiz-button back-arrow" onClick={() => {
-              setQuizMode({
-                quizGeneration: false,
-                quizType: undefined,
-                clickedElement: undefined,
-                section_index: undefined
-              })
-              resetQuizView();
-            }}/>
-              <h1 className="section-title">Introduction</h1>
-              </div>
-          ) : (
-            <div className="sidebar-section">
-              {(() => {
+        <header className="sidebar-header quiz-header">
+          <div className="quiz-header-content">
+            {quizMode.clickedElement === "summary" ? (
+              <>
+                <h1 className="sidebar-title">Introduction</h1>
+              </>
+            ) : (
+              (() => {
                 const index = quizMode.clickedElement?.split("-")[1];
                 if (index === undefined) return null;
                 
@@ -378,26 +410,49 @@ const Sidebar = () => {
                 
                 return (
                   <>
-                  <IoMdArrowBack className="quiz-button back-arrow" onClick={() => {
-              setQuizMode({
-                quizGeneration: false,
-                quizType: undefined,
-                clickedElement: undefined,
-                section_index: undefined
-              })
-              resetQuizView();
-            }}/>
-                    <h1 className="section-title">{`Section ${section.number}`}</h1>
-                    <p className="section-content">{section.line || ""}</p>
+                    <h1 className="sidebar-title">{`Section ${section.number}`}</h1>
+                    <p className="quiz-header-subtitle">{section.line || ""}</p>
                   </>
                 );
-              })()}
-            </div>
-          )}
+              })()
+            )}
+          </div>
+          <IoMdArrowBack className="quiz-back-button" title="Return to Sidebar" onClick={() => {
+            setQuizMode({
+              quizGeneration: false,
+              quizType: undefined,
+              clickedElement: undefined,
+              section_index: undefined
+            })
+            resetQuizView();
+            setError(null); 
+          }}/>
         </header>
         {/* Quiz content body */}
         <div className="sidebar-content">
-          {quizContent ? (
+          {error ? (
+            <div className="quiz-error">
+              <div className="sidebar-section">
+                <h3 className="section-title">Error</h3>
+                <p className="section-content error-message">{error}</p>
+                <button 
+                  className="quiz-nav-button" 
+                  onClick={() => {
+                    setError(null);
+                    setQuizMode({
+                      quizGeneration: false,
+                      quizType: undefined,
+                      clickedElement: undefined,
+                      section_index: undefined
+                    });
+                  }}
+                  style={{marginTop: '10px'}}
+                >
+                  Back to Sidebar
+                </button>
+              </div>
+            </div>
+          ) : quizContent ? (
             <div className={`quiz-container ${animatingFinish ? 'finishing' : ''}`}>
                {showResults ? (
                     <div className="quiz-results">
@@ -479,6 +534,7 @@ const Sidebar = () => {
                           section_index: undefined
                         })
                         resetQuizView();
+                        setError(null); 
                       }}
                     >
                       Return to Sidebar
@@ -488,13 +544,6 @@ const Sidebar = () => {
                 ) : (
                 /* Quiz */
                 <>
-                {/* add error message here */}
-                {error ? (
-                  <div className="sidebar-section">
-                  <p className="section-content">No sections available. Please reload page in case of rendering issues.</p>
-                </div>
-                ) : (
-                  <>
                   <div className="quiz-progress">
                     <div className="quiz-progress-bar">
                       <div 
@@ -502,9 +551,18 @@ const Sidebar = () => {
                         style={{ width: `${((currentQuestionIndex + 1) / totalQuestions) * 100}%` }}
                       />
                     </div>
-                    <span className="quiz-progress-text">
-                      Question {currentQuestionIndex + 1} of {totalQuestions}
-                    </span>
+                    <div className="quiz-progress-header">
+                      <span className="quiz-progress-text">
+                        Question {currentQuestionIndex + 1} of {totalQuestions}
+                      </span>
+                      <button 
+                        className="quiz-view-article-icon"
+                        onClick={() => setIsViewingArticle(!isViewingArticle)}
+                        title={isViewingArticle ? 'Hide Article' : 'View Article'}
+                      >
+                        {isViewingArticle ? <HiOutlineEyeOff /> : <HiOutlineEye />}
+                      </button>
+                    </div>
                   </div>
 
                   {currentQuestion && (
@@ -558,8 +616,6 @@ const Sidebar = () => {
                       )}
                     </div>
                   )}
-                  </>
-                )}
                 </>
               )}
             </div>
@@ -570,11 +626,67 @@ const Sidebar = () => {
       </>
     ) : (
       <>
-      <header className="sidebar-header">
+            <header className="sidebar-header">
         <h1 className="sidebar-title">{title || "Untitled"}</h1>
+        {/* Settings; TODO = save setting to local storage; edit prompts and code to utilize settings */}
+        <div className="settings-container" ref={settingsRef}>
+          <IoMdSettings 
+            className="sidebar-settings-icon" 
+            onClick={() => setShowSettings(!showSettings)}
+            title="Settings"
+          />
+          {showSettings && (
+            <div className="settings-dropdown">
+
+              <div className="settings-section">
+                <div className="settings-label">Question Difficulty</div>
+                <div className="settings-options">
+                  {(['recall', 'stimulating', 'synthesis'] as const).map(difficulty => (
+                    <div 
+                      key={difficulty}
+                      className={`settings-option ${questionDifficulty === difficulty ? 'selected' : ''}`}
+                      onClick={(e) => {
+                        setQuestionDifficulty(difficulty);
+                        browser.runtime.sendMessage({ type: 'toggleSettings', payload: { questionDifficulty: difficulty, numQuestions: numQuestions } });
+                      }}
+                    >
+                      {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="settings-section">
+                <div className="settings-label">Number of Questions</div>
+                <div className="settings-options">
+                  {([4, 7] as const).map(num => (
+                    <div 
+                      key={num}
+                      className={`settings-option ${numQuestions === num ? 'selected' : ''}`}
+                      onClick={(e) => {
+                        setNumQuestions(num);
+                        browser.runtime.sendMessage({ type: 'toggleSettings', payload: { questionDifficulty: questionDifficulty, numQuestions: num } });
+                      }}
+                    >
+                      {num} Questions
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              
+              <div className="settings-item" onClick={() => {
+                setShowSettings(false);
+                handleToggleClick();
+              }}>
+                Close Sidebar
+              </div>
+            </div>
+          )}
+        </div>
       </header>
       
-      <div className="sidebar-content">
+      <div className="sidebar-content" ref={(el) => setSidebarContentElement(el)}>
         {summary && (
           <div className="sidebar-section" id="summary" onMouseEnter={() => {
             setQuizState({

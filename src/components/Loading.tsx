@@ -1,10 +1,26 @@
 import { BsFileEarmarkText } from 'react-icons/bs';
+import { useState, useEffect } from 'react';
 
 type LoadingProps = {
   message?: string;
 };
 
 export default function Loading({ message }: LoadingProps) {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSeconds(prev => prev + 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatTime = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
+  };
   return (
     <div className="loading-container">
       <div className="loading-card">
@@ -37,6 +53,10 @@ export default function Loading({ message }: LoadingProps) {
             <div className="skeleton-pill"></div>
             <div className="skeleton-pill"></div>
           </div>
+        </div>
+
+        <div className="loading-timer">
+          {formatTime(seconds)}
         </div>
       </div>
     </div>

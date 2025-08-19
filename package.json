@@ -15,6 +15,7 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
+    "@google/genai": "^1.14.0",
     "@types/html-to-text": "^9.0.4",
     "cohere-ai": "^7.17.1",
     "groq-sdk": "^0.26.0",
