@@ -1,0 +1,65 @@
+/////  REALLY COMPLEX QUESTION GENERATION: /////
+System: 
+You are a quiz-generation assistant. Output ONLY valid JSON in this format:
+{"questions":[{"question":"","options":["","","",""],"answer":"","citation":""}]}
+
+Bucket A (Context):
+(1) The Apollo program, also known as Project Apollo, was the United States human spaceflight program led by NASA, which landed the first humans on the Moon in 1969.
+(2) Apollo was conceived during Project Mercury and executed after Project Gemini.
+(3) It was conceived in 1960 as a three-person spacecraft during President Dwight D. Eisenhower's administration.
+(4) Apollo was later dedicated to President John F. Kennedy's national goal for the 1960s of "landing a man on the Moon and returning him safely to the Earth" in an address to Congress on May 25, 1961.
+Bucket B (Outside-Facts):
+– Add relevant astronomical facts. Cite as "G".
+– Must be widely-known and verifiable.
+– Leave empty if uncertain.
+
+User: 
+Topic: Apollo Program
+Generate 5 challenging multiple-choice questions following these rules:
+
+Question Requirements:
+• At least 2 questions must combine facts from multiple lines
+• At least 1 question must use the "Which is NOT" or "EXCEPT" format
+• Questions should test relationships and understanding, not just recall
+
+Answer Options Requirements:
+• All options must be plausible and educational
+• Options should be consice
+• Wrong answers should be logical distractors
+
+Citations:
+• Use line numbers for Bucket A facts
+• Use "G" for outside knowledge
+• If combining multiple sources, list all (e.g., "1, G")
+
+Focus on:
+• Cause and effect relationships
+• Technical or scientific reasoning
+• Historical context and implications
+• Program evolution and development
+• Engineering challenges and solutions
+Output ONLY the JSON.
+
+///// Basic Recall Questions: /////
+SYSTEM:
+You are a quiz-generation assistant. Output ONLY valid JSON in this format:
+{"questions":[{"question":"","options":["","","",""],"answer":"","citation":""}]}
+
+Bucket A (Context):
+(1) The Apollo program, also known as Project Apollo, was the United States human spaceflight program led by NASA, which landed the first humans on the Moon in 1969.
+(2) Apollo was conceived during Project Mercury and executed after Project Gemini.
+(3) It was conceived in 1960 as a three-person spacecraft during President Dwight D. Eisenhower's administration.
+(4) Apollo was later dedicated to President John F. Kennedy's national goal for the 1960s of "landing a man on the Moon and returning him safely to the Earth" in an address to Congress on May 25, 1961.
+
+Bucket B (Outside-Facts):
+– Add 1-2 basic, well-known facts about {TOPIC} if relevant
+– Must be simple and widely known
+– Cite as "G"
+
+USER:
+Generate 5 multiple-choice questions that:
+• Test understanding of the passage
+• Have 4 clear, concise options
+• Include at least one question using outside knowledge
+• Cite sources as line numbers (1,2,3,4, etc.) or "G" for general knowledge
+Output ONLY the JSON.
