@@ -6,7 +6,7 @@
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: #3498db;
+  background: #f3f6fd;
   color: white;
   border: none;
   cursor: pointer;
@@ -15,23 +15,164 @@
   justify-content: center;
   font-size: 24px;
   box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
-  transition: all 0.3s ease;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 1000;
   pointer-events: auto;
+  overflow: hidden;
 }
 
 .sidebar-toggle-button:hover {
-  background: #2980b9;
-  transform: scale(1.1);
+  background: #eaf3fc;
+  transform: scale(1.05);
   box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
 }
 
 .sidebar-toggle-button.expanded {
-  background: #e74c3c;
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  transform: rotate(180deg);
 }
 
 .sidebar-toggle-button.expanded:hover {
-  background: #c0392b;
+  background: linear-gradient(135deg, #c0392b 0%, #a93226 100%);
+  transform: rotate(180deg) scale(1.05);
+  box-shadow: 0 6px 20px rgba(231, 76, 60, 0.4);
+}
+
+/* Icon transition styles */
+.sidebar-toggle-button .toggle-icon {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  z-index: 2;
+}
+
+.sidebar-toggle-button.collapsed .toggle-icon {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+
+.sidebar-toggle-button.expanded .toggle-icon {
+  opacity: 1;
+  transform: scale(1.05) rotate(-180deg);
+}
+
+/* Background blur effect on hover */
+.sidebar-toggle-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 50%;
+  background: inherit;
+  filter: blur(0px);
+  transition: filter 0.3s ease;
+  z-index: -1;
+}
+
+.sidebar-toggle-button:hover::before {
+  filter: blur(2px);
+}
+
+/* Keep icon sharp on hover */
+.sidebar-toggle-button .toggle-icon,
+.sidebar-toggle-button:hover .toggle-icon {
+  filter: blur(0px) !important;
+}
+
+/* Logo specific styling */
+.sidebar-toggle-button .logo-image {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  filter: drop-shadow(0 2px 4px rgba(52, 152, 219, 0.2)) blur(0px) !important;
+}
+
+.sidebar-toggle-button:hover .logo-image {
+  filter: drop-shadow(0 3px 6px rgba(52, 152, 219, 0.3)) blur(0px) !important;
+}
+
+/* Close icon specific styling */
+.sidebar-toggle-button .close-icon {
+  font-size: 26px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  color: white;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2)) blur(0px) !important;
+}
+
+/* Enhanced transition effects */
+.sidebar-toggle-button.collapsed {
+  background: linear-gradient(135deg, #f3f6fd 0%, #e8f4fd 100%);
+}
+
+.sidebar-toggle-button.collapsed:hover {
+  background: linear-gradient(135deg, #eaf3fc 0%, #ddeef9 100%);
+}
+
+/* Removed icon rotation animations - icons now start at full size */
+
+/* Icons always at full size and opacity - no animations on load */
+.sidebar-toggle-button.collapsed .logo-image,
+.sidebar-toggle-button.expanded .close-icon {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+
+/* Micro-interactions for enhanced UX */
+.sidebar-toggle-button:active {
+  transform: scale(0.95);
+  transition: transform 0.1s ease;
+}
+
+.sidebar-toggle-button.expanded:active {
+  transform: rotate(180deg) scale(0.95);
+}
+
+/* Improved focus states for accessibility */
+.sidebar-toggle-button:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.3);
+}
+
+.sidebar-toggle-button.expanded:focus {
+  box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.3);
+}
+
+/* Pulse ring effect on hover - using ::after pseudo-element */
+.sidebar-toggle-button:hover::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border-radius: 50%;
+  background: linear-gradient(45deg, rgba(52, 152, 219, 0.3), rgba(231, 76, 60, 0.3));
+  z-index: -2;
+  opacity: 0;
+  animation: pulseRing 1.5s ease-out infinite;
+}
+
+.sidebar-toggle-button.expanded:hover::after {
+  background: linear-gradient(45deg, rgba(231, 76, 60, 0.3), rgba(192, 57, 43, 0.3));
+}
+
+@keyframes pulseRing {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
 }
 
 .sidebar-toggle-button.quiz-active {

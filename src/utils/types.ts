@@ -1,12 +1,12 @@
 export type QuizContent = {
-    questions: {
-      question: string,
-      citation: string,
-      answer: number,
-      options: [string, string, string, string],
-      difficulty: string,
-      explanation: string
-    }[]
+    questions: [{
+      question: string;
+      options: [string, string, string, string];
+      answer: 0 | 1 | 2 | 3;
+      citation: string;
+      difficulty: "easy" | "medium" | "hard" | "extreme";
+      explanation: string;
+    }]
   }
 
 // Browser Storage Types
@@ -27,7 +27,7 @@ export interface StorageMetadata {
 }
 
 export interface UserSettings {
-  questionDifficulty: "recall" | "stimulating" | "synthesis";
+  questionDifficulty: "easy" | "medium" | "hard";
   numQuestions: 4 | 7;
   sidebarEnabled: boolean;
 }
@@ -37,7 +37,7 @@ export interface UserSettings {
 // Complete storage schema
 export interface StorageSchema {
   // User settings (persistent across sessions)
-  questionDifficulty: "recall" | "stimulating" | "synthesis";
+  questionDifficulty: "easy" | "medium" | "hard";
   numQuestions: 4 | 7;
   sidebarEnabled: boolean;
   

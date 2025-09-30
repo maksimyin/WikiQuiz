@@ -7,8 +7,19 @@ export default defineContentScript({
     matches: ['*://*.wikipedia.org/wiki/*'],
     cssInjectionMode: 'ui',
     async main(ctx) {
-        // Don't inject sidebar on Wikipedia main page
-        if (window.location.pathname === '/wiki/Main_Page') {
+
+        const mainPagePatterns = [
+            '/wiki/Main_Page',        
+            '/wiki/Wikipedia:Portada',  
+            '/wiki/Wikipédia:Accueil_principal',
+            '/wiki/Wikipedia:Hauptseite', 
+            '/wiki/Wikipedia:首页',
+            "/wiki/Заглавная_страница",
+            "/wiki/Pagina_principale",
+            "/wiki/Strona_główna",
+        ];
+        
+        if (mainPagePatterns.some(pattern => window.location.pathname === pattern)) {
             return;
         }
         

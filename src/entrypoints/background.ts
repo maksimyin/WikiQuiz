@@ -2,10 +2,14 @@ import { convert } from 'html-to-text';
 import * as prompts from '../utils/prompts';
 import { generateQuizGemini } from '../utils/ai-helper';
 import * as types from '../utils/types';
-import { SELECTORS, isMetaSection } from '../utils/constants';
+import { SELECTORS, isMetaSection, schema } from '../utils/constants';
 import type { WikiSection, StorageMetadata, StorageSchema } from '../utils/types';
 import { createStorageKeys } from '../utils/types';
 import { sessionStorage, getUserSettings, updateUserSettings } from '../utils/storage';
+import {jsonrepair} from 'jsonrepair'
+//Ajv for json validation
+// need to switch to zod for json validation
+
 
 export default defineBackground(() => {
 
@@ -24,11 +28,11 @@ export default defineBackground(() => {
     toggleSidebar: "local" | "session",
     getSidebarState: "local" | "session",
     toggleSettings: {
-      questionDifficulty: "recall" | "stimulating" | "synthesis",
+      questionDifficulty: "easy" | "medium" | "hard",
       numQuestions: 4 | 7
     },
     getSettings: {
-      questionDifficulty: "recall" | "stimulating" | "synthesis",
+      questionDifficulty: "easy" | "medium" | "hard",
       numQuestions: 4 | 7
     }
   } // add more when we shape more payloads
@@ -79,21 +83,42 @@ export default defineBackground(() => {
     getQuizContent: async (payload, sendResponse): Promise<boolean> => {
       // error handling for LLM mistakes; if adding token system for users refund their tokens in case of error
       function checkQuizContent(quizContent: types.QuizContent, expectedQuestions: number): boolean {
-        if (quizContent.questions.length !== expectedQuestions) {
-          sendResponse({"reply": "Not enough questions were generated. Please try again."})
+        if (!quizContent || !Array.isArray((quizContent as any).questions)) {
+          sendResponse({
+            reply: `Model returned no questions. Expected ${expectedQuestions}. Try again or adjust settings.`
+          });
           return false;
         }
-        quizContent.questions.forEach((question: any) => {
-          if (typeof(question) !== "object" || 
-              question.answer === undefined || question.answer === null ||
-              !question.question || 
-              !question.options || question.options.length !== 4 ||
-              !question.explanation) {
-            console.log(typeof(question), question.answer, question.question, question.options, question.explanation);
-            sendResponse({"reply": "Error generating quiz content. Please try again."})
+        const received = (quizContent as any).questions.length;
+        if (received !== expectedQuestions) {
+          sendResponse({
+            reply: `Expected ${expectedQuestions} questions but received ${received}. Please try again.`
+          });
+          return false;
+        }
+        for (let idx = 0; idx < (quizContent as any).questions.length; idx++) {
+          const question = (quizContent as any).questions[idx];
+          const issues: string[] = [];
+          const validQuestion = typeof question?.question === "string" && question.question.trim().length > 0;
+          if (!validQuestion) issues.push("missing or empty question text");
+          const validOptionsArray = Array.isArray(question?.options);
+          const validOptionsCount = validOptionsArray && question.options.length === 4;
+          const validOptionsValues = validOptionsArray && question.options.every((o: any) => typeof o === "string" && o.trim().length > 0);
+          if (!validOptionsArray) issues.push("options is not an array");
+          else if (!validOptionsCount) issues.push(`options must contain 4 choices (got ${question.options?.length ?? 0})`);
+          else if (!validOptionsValues) issues.push("one or more options are not non-empty strings");
+          const validExplanation = typeof question?.explanation === "string" && question.explanation.trim().length > 0;
+          if (!validExplanation) issues.push("missing or empty explanation");
+          const validAnswer = Number.isInteger(question?.answer) && question.answer >= 0 && question.answer <= 3;
+          if (!validAnswer) issues.push("answer must be an integer index 0-3 corresponding to options A-D");
+          if (issues.length > 0) {
+            console.log("Invalid question detected", { index: idx, question });
+            sendResponse({
+              reply: `Invalid question at #${idx + 1}: ${issues.join(", ")}. Please try again.`
+            });
             return false;
           }
-        });
+        }
         return true;
       }
       const { topic, bucket_a, url } = payload;
@@ -124,10 +149,17 @@ export default defineBackground(() => {
           sendResponse({"reply": `Not enough content in section "${sectionTitle}" to generate a quiz`})
           return false;
         }
-        const quizContent = await sendAIChat(section_chopped, "section", topic, sectionTitle);
+        let quizContent: types.QuizContent | null = null;
+        try {
+          quizContent = await sendAIChat(section_chopped, "section", topic, sectionTitle);
+        } catch (err: any) {
+          console.error("Quiz generation error (section)", err);
+          sendResponse({ reply: `Quiz generation failed: ${err?.message || String(err)}` });
+          return false;
+        }
         console.log("quizContent", quizContent);
         if (!quizContent) {
-          sendResponse({"reply": "Error generating quiz content"})
+          sendResponse({ reply: "Quiz generation returned empty result. Please retry." })
           return false;
         }
         if (!checkQuizContent(quizContent, numQuestions)) {
@@ -147,13 +179,21 @@ export default defineBackground(() => {
         const summaryContent = bucket_a
         console.log("summaryContent", summaryContent);
         if (summaryContent) {
-          if (Object.keys(summaryContent).length < 7) {
-            sendResponse({"reply": "Not enough content in Introduction to generate a quiz"})
+          const summaryCount = Object.keys(summaryContent).length;
+          if (summaryCount < 7) {
+            sendResponse({"reply": `Not enough content in Introduction (found ${summaryCount} sentences; need at least 7).`})
             return false;
           }
-          const quizContent = await sendAIChat(summaryContent, "summary", topic);
+          let quizContent: types.QuizContent | null = null;
+          try {
+            quizContent = await sendAIChat(summaryContent, "summary", topic);
+          } catch (err: any) {
+            console.error("Quiz generation error (summary)", err);
+            sendResponse({ reply: `Quiz generation failed: ${err?.message || String(err)}` });
+            return false;
+          }
           if (!quizContent) {
-            sendResponse({"reply": "Error generating quiz content"})
+            sendResponse({"reply": "Quiz generation returned empty result. Please retry."})
             return false;
           }
           if (!checkQuizContent(quizContent, numQuestions)) {
@@ -246,12 +286,6 @@ export default defineBackground(() => {
     };
   }
 
-  type SummaryData = {
-    title: string;
-    description?: string;
-    extract?: string;
-    [key: string]: any;
-  };
 
   type SectionsData = {
     parse?: {
@@ -277,6 +311,8 @@ export default defineBackground(() => {
   const requestQueue: RequestQueue = {};
   const MIN_REQUEST_INTERVAL = 1000; 
 
+
+
   // TODO: Use utils functions to send section/summary to Cohere
   const sendAIChat = async (content: Record<number, string>, type: "section" | "summary", topic: string, sectionTitle?: string): Promise<types.QuizContent | null> => {
     function formatBucket(sentences: Record<number, string>) {
@@ -293,61 +329,62 @@ export default defineBackground(() => {
     // consider using: https://docs.boundaryml.com/guide/installation-language/typescript for json verification for gemini
     // use generateQuiz for general testing
     // Add settings (question variabvility and difficulty)
-    try {
-      const prompt = type === "section" 
-        ? (questionDifficulty === "recall" ? prompts.USER_SECTION : questionDifficulty === "stimulating" ? prompts.USER_SECTION_COMPLEX : prompts.USER_SECTION_EXTREME)
-        : (questionDifficulty === "recall" ? prompts.USER_SUMMARY : questionDifficulty === "stimulating" ? prompts.USER_SUMMARY_COMPLEX : prompts.USER_SUMMARY_EXTREME);
-      
-      const quizContent: any = type === "section" ? 
+    const prompt = type === "section" 
+      ? (questionDifficulty === "easy" ? prompts.USER_SECTION : questionDifficulty === "medium" ? prompts.USER_SECTION_COMPLEX : prompts.USER_SECTION_EXTREME)
+      : (questionDifficulty === "easy" ? prompts.USER_SUMMARY : questionDifficulty === "medium" ? prompts.USER_SUMMARY_COMPLEX : prompts.USER_SUMMARY_EXTREME);
+    
+    const quizContent: any = type === "section" ? 
+    await generateQuizGemini(prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
+      TOPIC: topic,
+      BUCKET_A: formatBucket(content)
+            }), prompts.fillPrompt(prompt, {
+        NUM_QUESTIONS: numQuestions.toString(),
+        TOPIC: topic,
+        SECTION_TITLE: sectionTitle || ""}))
+       :
       await generateQuizGemini(prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
         TOPIC: topic,
         BUCKET_A: formatBucket(content)
-              }), prompts.fillPrompt(prompt, {
-          NUM_QUESTIONS: numQuestions.toString(),
-          TOPIC: topic,
-          SECTION_TITLE: sectionTitle || ""}))
-         :
-        await generateQuizGemini(prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
-          TOPIC: topic,
-          BUCKET_A: formatBucket(content)
-        }), prompts.fillPrompt(prompt, {
-          NUM_QUESTIONS: numQuestions.toString(),
-          TOPIC: topic}))
+      }), prompts.fillPrompt(prompt, {
+        NUM_QUESTIONS: numQuestions.toString(),
+        TOPIC: topic}))
 
-      
-      if (!quizContent || !quizContent.candidates || !quizContent.candidates[0] || !quizContent.candidates[0].content) {
-        console.error("Invalid quiz content structure:", quizContent);
-        return null;
-      }
-
-      const responseText = quizContent.candidates[0].content.parts[0].text;
-      console.log("Raw response text:", responseText);
-      
-      let response;
-      try {
-        response = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error("JSON parse error:", parseError);
-        console.error("Raw response that failed to parse:", responseText);
-        return null;
-      }
-      
-      console.log("Parsed response:", response);
-      
-      if (!response || !response.questions || !Array.isArray(response.questions)) {
-        console.error("Invalid response structure or too few tokens");
-        return null;
-      }
-      
-      response.questions.forEach((question: any) => {
-        question.answer = Number(question.answer);
-      });
-      
-      return response;
-    } catch (error) {
-      console.error("Error in sendAIChat:", error);
-      return null;
+    if (!quizContent || !quizContent.candidates || !quizContent.candidates[0] || !quizContent.candidates[0].content) {
+      console.error("Invalid quiz content structure:", quizContent);
+      throw new Error("Model returned an empty response. Please try again or lower difficulty.");
     }
+
+    const responseText = quizContent.candidates[0].content.parts[0].text;
+    console.log("Raw response text:", responseText);
+    
+    // jsonrepair | consider switcing to gpt for better json return
+    let response: types.QuizContent;
+    try {
+      response = JSON.parse(jsonrepair(responseText)) as types.QuizContent;
+      console.log("Repaired response:", response);
+    } catch (error: any) {
+      console.error("Error in jsonrepair:", error);
+      throw new Error(`Failed to parse model JSON output: ${error?.message || String(error)}`);
+    }
+
+    if (!response || !response.questions || !Array.isArray(response.questions)) {
+      console.error("Invalid response structure or too few tokens");
+      throw new Error("Model returned invalid quiz structure. Please retry.");
+    }
+    
+    // sanitize fields and coerce answer safely
+    response.questions = response.questions.map((q: any) => {
+      const coercedAnswer = typeof q?.answer === "number" ? q.answer : parseInt(String(q?.answer ?? ""), 10);
+      return {
+        ...q,
+        question: typeof q?.question === "string" ? q.question.trim() : q?.question,
+        explanation: typeof q?.explanation === "string" ? q.explanation.trim() : q?.explanation,
+        options: Array.isArray(q?.options) ? q.options.map((o: any) => typeof o === "string" ? o.trim() : o) : q?.options,
+        answer: Number.isFinite(coercedAnswer) ? coercedAnswer : NaN,
+      };
+    }) as any;
+
+    return response;
   }
 
   const toggleSidebar = async (payload: "local" | "session") => {
@@ -420,19 +457,20 @@ export default defineBackground(() => {
       
       const currentSection = sections.find((s: WikiSection) => Number(s.index) === Number(section_index));
       if (!currentSection) {
-        return `Section not found in stored sections`;
+        const available = sections.map((s: WikiSection) => s.index).slice(0, 20).join(", ");
+        return `Section ${section_index} not found in stored sections. Available indices (first 20): ${available}`;
       }
 
       const api_url = `https://en.wikipedia.org/w/api.php?origin=*&format=json&action=parse&page=${encodeURIComponent(topic)}&prop=text&section=${section_index}`;
       
       const sectionHTML = await makeWikipediaRequest(api_url);
       if (!sectionHTML.ok) {
-        return `Wikipedia API request failed: ${sectionHTML.status}`;
+        return `Wikipedia API request failed with status ${sectionHTML.status} for section ${section_index}.`;
       }
 
       const sectionHTMLData: Section_Api_Response = await sectionHTML.json();
       if (!sectionHTMLData.parse?.text["*"]) {
-        return `Invalid response from Wikipedia API`;
+        return `Invalid response from Wikipedia API: missing section html.`;
       }
 
       const sectionText = convert(sectionHTMLData.parse.text["*"], {
@@ -502,7 +540,7 @@ export default defineBackground(() => {
       if (fetchError.name === 'AbortError') {
         return `Wikipedia API request timed out`;
       } else {
-        return `Error fetching from Wikipedia API: ${fetchError}`;
+        return `Error fetching from Wikipedia API: ${fetchError?.message || String(fetchError)}`;
       }
     }
   };
@@ -510,7 +548,7 @@ export default defineBackground(() => {
   const handlePageUpdate = async (url: string) => {
     const baseUrl = url.match(idRegex)?.[0] || url;
 
-    if (!baseUrl || baseUrl === lastProcessedUrl || isProcessing || !url.includes("wikipedia.org/wiki/Main_Page")) {
+    if (!baseUrl || baseUrl === lastProcessedUrl || isProcessing || url.includes("wikipedia.org/wiki/Main_Page")) {
       return;
     }
 
@@ -656,4 +694,7 @@ export default defineBackground(() => {
     }
   });
 
+  
+
 });
+

@@ -110,14 +110,14 @@ export const localStorage = {
  * Helper function to get user settings with defaults
  */
 export const getUserSettings = async (): Promise<{
-  questionDifficulty: "recall" | "stimulating" | "synthesis";
+  questionDifficulty: "easy" | "medium" | "hard";
   numQuestions: 4 | 7;
   sidebarEnabled: boolean;
 }> => {
   const result = await sessionStorage.get(["questionDifficulty", "numQuestions", "sidebarEnabled"]);
   
   return {
-    questionDifficulty: result.questionDifficulty || "stimulating",
+    questionDifficulty: result.questionDifficulty || "medium",
     numQuestions: result.numQuestions || 4,
     sidebarEnabled: result.sidebarEnabled || false
   };
@@ -125,7 +125,7 @@ export const getUserSettings = async (): Promise<{
 
 
 export const updateUserSettings = async (settings: Partial<{
-  questionDifficulty: "recall" | "stimulating" | "synthesis";
+  questionDifficulty: "easy" | "medium" | "hard";
   numQuestions: 4 | 7;
   sidebarEnabled: boolean;
 }>): Promise<void> => {

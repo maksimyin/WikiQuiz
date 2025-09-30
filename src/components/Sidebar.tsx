@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import './Sidebar.css';
 import { IoMdArrowBack } from "react-icons/io";
 import { BsFileEarmarkText } from "react-icons/bs";
-import { IoMdMenu, IoMdClose, IoMdSettings } from "react-icons/io";
+import { IoMdClose, IoMdSettings } from "react-icons/io";
 import { HiOutlineEye, HiOutlineEyeOff } from "react-icons/hi";
 import * as types from '../utils/types';
 import Loading from './Loading';
 import { browser } from 'wxt/browser';
+import sidebarIcon from '../assets/icon/transparent_128.png';
 
 const Sidebar = () => {
   const [sections, setSections] = useState<any[]>([]);
@@ -22,14 +23,24 @@ const Sidebar = () => {
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
-  const [questionDifficulty, setQuestionDifficulty] = useState<'recall' | 'stimulating' | 'synthesis'>('stimulating');
+  const [questionDifficulty, setQuestionDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [numQuestions, setNumQuestions] = useState<4 | 7>(4);
   const [isViewingArticle, setIsViewingArticle] = useState(false);
   const [sidebarContentElement, setSidebarContentElement] = useState<HTMLDivElement | null>(null);
   
   
-  // Don't render sidebar on Wikipedia main page
-  if (window.location.pathname === '/wiki/Main_Page') {
+  const mainPagePatterns = [
+    '/wiki/Main_Page',        
+    '/wiki/Wikipedia:Portada',  
+    '/wiki/Wikipédia:Accueil_principal',
+    '/wiki/Wikipedia:Hauptseite', 
+    '/wiki/Wikipedia:首页',
+    "/wiki/Заглавная_страница",
+    "/wiki/Pagina_principale",
+    "/wiki/Strona_główna",
+];
+  
+  if (mainPagePatterns.some(pattern => window.location.pathname === pattern)) {
     return null;
   } 
   // Update page styles when sidebar state changes
@@ -136,26 +147,17 @@ const Sidebar = () => {
       if (quizMode.quizGeneration) {
         setQuizContent(null);
         setError(null);
-        
-        // Reset scroll to top when quiz generation starts
-        // For shadow DOM, we need to use state to track the content element
+        // reset scroll to top
         const scrollToTop = () => {
-          console.log('Attempting scroll reset...');
-          console.log('sidebarContentElement:', sidebarContentElement);
-          
           if (sidebarContentElement) {
-            console.log('Current scrollTop:', sidebarContentElement.scrollTop);
             sidebarContentElement.scrollTop = 0;
-            console.log('After reset scrollTop:', sidebarContentElement.scrollTop);
           } else {
             console.log('Could not find sidebar content element - element is null');
           }
         };
         
-        // Immediate scroll reset
         scrollToTop();
         
-        // Also try after a short delay in case the DOM hasn't updated yet
         setTimeout(scrollToTop, 50);
         
         const quizContent: {reply: types.QuizContent | string} = await browser.runtime.sendMessage({
@@ -188,7 +190,12 @@ const Sidebar = () => {
         onClick={handleToggleClick}
         title={isCollapsed ? "Open Sidebar" : "Close Sidebar"}
       >
-        {isCollapsed ? <IoMdMenu /> : <IoMdClose />}
+        {/* need to add icon here*/}
+        {isCollapsed ? (
+          <img src={sidebarIcon} alt="Open sidebar" style={{ width: '35px', height: '35px' }} />
+        ) : (
+          <IoMdClose />
+        )}
       </button>
     )
   }
@@ -384,7 +391,18 @@ const Sidebar = () => {
         onClick={handleToggleClick}
         title={isCollapsed ? "Open Sidebar" : "Close Sidebar"}
       >
-        {isCollapsed ? <IoMdMenu /> : <IoMdClose />}
+        <div className="toggle-icon">
+          {isCollapsed ? (
+            <img 
+              src={sidebarIcon} 
+              alt="Open sidebar" 
+              className="logo-image"
+              style={{ width: '35px', height: '35px' }}
+            />
+          ) : (
+            <IoMdClose className="close-icon" />
+          )}
+        </div>
       </button>
 
       {/* Dim backdrop during quiz; consider adding unblur animation*/}
@@ -641,7 +659,7 @@ const Sidebar = () => {
               <div className="settings-section">
                 <div className="settings-label">Question Difficulty</div>
                 <div className="settings-options">
-                  {(['recall', 'stimulating', 'synthesis'] as const).map(difficulty => (
+                  {(['easy', 'medium', 'hard'] as const).map(difficulty => (
                     <div 
                       key={difficulty}
                       className={`settings-option ${questionDifficulty === difficulty ? 'selected' : ''}`}
@@ -672,14 +690,6 @@ const Sidebar = () => {
                     </div>
                   ))}
                 </div>
-              </div>
-              
-              
-              <div className="settings-item" onClick={() => {
-                setShowSettings(false);
-                handleToggleClick();
-              }}>
-                Close Sidebar
               </div>
             </div>
           )}
