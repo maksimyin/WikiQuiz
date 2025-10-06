@@ -8,9 +8,10 @@ import * as types from '../utils/types';
 import Loading from './Loading';
 import { browser } from 'wxt/browser';
 import sidebarIcon from '../assets/icon/transparent_128.png';
+import { sendMessageWithRetry } from '../utils/messaging';
 
 const Sidebar = () => {
-  const [sections, setSections] = useState<any[]>([]);
+  const [sections, setSections] = useState<WikiSection[]>([]);
   const [title, setTitle] = useState<string>("");
   const [summary, setSummary] = useState<Record<number, string>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -28,22 +29,8 @@ const Sidebar = () => {
   const [isViewingArticle, setIsViewingArticle] = useState(false);
   const [sidebarContentElement, setSidebarContentElement] = useState<HTMLDivElement | null>(null);
   
-  
-  const mainPagePatterns = [
-    '/wiki/Main_Page',        
-    '/wiki/Wikipedia:Portada',  
-    '/wiki/Wikipédia:Accueil_principal',
-    '/wiki/Wikipedia:Hauptseite', 
-    '/wiki/Wikipedia:首页',
-    "/wiki/Заглавная_страница",
-    "/wiki/Pagina_principale",
-    "/wiki/Strona_główna",
-];
-  
-  if (mainPagePatterns.some(pattern => window.location.pathname === pattern)) {
-    return null;
-  } 
-  // Update page styles when sidebar state changes
+  // work on properly typing await responses
+
   useEffect(() => {
     if (isCollapsed) {
       document.body.classList.remove('wiki-ai-sidebar-open');
@@ -54,8 +41,14 @@ const Sidebar = () => {
 
   // Function to handle user clicking the toggle button
   const handleToggleClick = async () => {
-    const result = await browser.runtime.sendMessage({ type: 'toggleSidebar', payload: 'session' });
+    try {
+    const result: {sidebarEnabled: boolean} = await sendMessageWithRetry({ type: 'toggleSidebar', payload: 'session' });
     setIsCollapsed(!result.sidebarEnabled);
+    } catch (error) {
+      console.error("Failed to toggle sidebar:", error);
+      // Falback
+      setIsCollapsed(prev => !prev);
+    }
   };
   type QuizMode = {
     quizGeneration: boolean;
@@ -88,6 +81,7 @@ const Sidebar = () => {
   });
 
   async function loadDataFromStorage() {
+    try {
     if (!window.location.hostname.endsWith('wikipedia.org')) {
       return;
     }
@@ -96,7 +90,7 @@ const Sidebar = () => {
       return;
     }
     
-    const response = await browser.runtime.sendMessage({
+    const response: {success: boolean} = await sendMessageWithRetry({
       type: 'initialization'
     });
     if (!response.success) {
@@ -104,7 +98,7 @@ const Sidebar = () => {
       return;
     }
 
-    const data = await browser.runtime.sendMessage({
+    const data: {sections: WikiSection[], title: string, summary: Record<number, string>} = await sendMessageWithRetry({
       type: 'getData',
       payload: {
         url: window.location.href
@@ -120,6 +114,11 @@ const Sidebar = () => {
       } else {
         setIsLoading(false);
       }
+    } catch (error) {
+      console.error("Failed to load Wikipedia page data:", error);
+      setIsLoading(false);
+      setError(error instanceof Error ? error.message : String(error));
+    }
   }
 
   useEffect(() => {
@@ -129,22 +128,36 @@ const Sidebar = () => {
     setTitle("");
     setSummary({});
     async function getSidebarEnabled() {
-      const enabled = await browser.runtime.sendMessage({ type: 'getSidebarState', payload: 'session' });
+      try {
+      const enabled: {sidebarEnabled: boolean} = await sendMessageWithRetry({ type: 'getSidebarState', payload: 'session' });
       setIsCollapsed(!enabled.sidebarEnabled);
+      } catch (error) {
+        console.error("Failed to get sidebar state:", error);
+        setIsCollapsed(true);
+      }
     }
     getSidebarEnabled();
     async function getSettings() {
-      const settings = await browser.runtime.sendMessage({ type: 'getSettings', payload: 'session' });
+      try {
+      const settings: {questionDifficulty: 'easy' | 'medium' | 'hard', numQuestions: 4 | 7} = await sendMessageWithRetry({ type: 'getSettings', payload: 'session' });
       setQuestionDifficulty(settings.questionDifficulty);
       setNumQuestions(settings.numQuestions);
+      } catch (error) {
+        console.error("Failed to get extension settings:", error);
+        setQuestionDifficulty('medium');
+        setNumQuestions(4);
+      }
     }
     getSettings();
  
   }, []);
 
   useEffect(() => {
+    let isActive = true;
+    
     async function getQuizContent() {
       if (quizMode.quizGeneration) {
+        try {
         setQuizContent(null);
         setError(null);
         // reset scroll to top
@@ -160,7 +173,9 @@ const Sidebar = () => {
         
         setTimeout(scrollToTop, 50);
         
-        const quizContent: {reply: types.QuizContent | string} = await browser.runtime.sendMessage({
+        const currentQuizMode = { ...quizMode };
+        
+        const quizContent: {reply: types.QuizContent | string} = await sendMessageWithRetry({
           type: 'getQuizContent',
           payload: {
             topic: title,
@@ -168,18 +183,44 @@ const Sidebar = () => {
             quizType: quizMode.quizType,
             url: window.location.href
           }
-        })
+        });
+        
+        if (!isActive || 
+            currentQuizMode.clickedElement !== quizMode.clickedElement ||
+            currentQuizMode.quizType !== quizMode.quizType) {
+          console.log('Quiz request cancelled or superseded by new request');
+          return;
+        }
+        
         if (typeof quizContent.reply === "string") {
-          console.log(quizContent.reply)
-           setQuizContent(null);
-           setError(quizContent.reply);
-         } else {
-           setQuizContent(quizContent.reply);
-           setError(null); 
-         }
+          if (!isActive) {
+            return;
+          }
+          console.log(quizContent.reply);
+          setQuizContent(null);
+          setError(quizContent.reply);
+        } else {
+          if (!isActive) {
+            return;
+          }
+          setQuizContent(quizContent.reply);
+          setError(null); 
+        }
+        } catch (error) {
+          if (!isActive) {
+            return;
+          }
+          console.error("Error getting quiz content:", error);
+          setError(error instanceof Error ? error.message : String(error));
+        }
       }
-  }
-  getQuizContent();
+    }
+    
+    getQuizContent();
+    
+    return () => {
+      isActive = false;
+    };
   }, [quizMode]);
 
  
@@ -239,138 +280,193 @@ const Sidebar = () => {
   };
 
   const handleFinishQuiz = () => {
+    try {
     setAnimatingFinish(true);
     setTimeout(() => {
       setShowResults(true);
       setAnimatingFinish(false);
     }, 800); 
+    } catch (error) {
+      console.error("Error showing quiz results:", error);
+    }
   };
 
   const calculateScore = () => {
-    if (!quizContent || !quizContent.questions) return { correct: 0, total: 0, percentage: 0 };
-    
-    const correct = quizContent.questions.reduce((count, question, index) => {
-      return selectedAnswers[index] === question.answer ? count + 1 : count;
-    }, 0);
-    
-    const total = quizContent.questions.length;
-    const percentage = Math.round((correct / total) * 100);
-    
-    return { correct, total, percentage };
+    try {
+      if (!quizContent || !quizContent.questions) return { correct: 0, total: 0, percentage: 0 };
+      
+      const correct = quizContent.questions.reduce((count, question, index) => {
+        return selectedAnswers[index] === question.answer ? count + 1 : count;
+      }, 0);
+      
+      const total = quizContent.questions.length;
+      const percentage = Math.round((correct / total) * 100);
+      
+      return { correct, total, percentage };
+    } catch (error) {
+      console.error("Error calculating quiz score:", error);
+      return { correct: 0, total: 0, percentage: 0 };
+    }
   };
 
   // separating sections by subsections
   // [{section}, {section}, {section}, {section}] -> [{...main_section, subsections: [{section}, {section}, {section}]}]
     // 0, 1, 2, 1, 0 ,1, 2, 2, 2, 3, 2, 1, 0 -> [{...main_section, subsections: [{...section, subsections: [{section}]}, {section}]}]... etc
 
-  interface WikiSection {
-    anchor: string,
-    fromtitle: string,
-    index: number,
-    level: number,
-    line: string,
-    number: number,
-    toclevel: number,
-  }
+
   interface SectionWithSubsections extends WikiSection {
     subsections: SectionWithSubsections[];
     numberedPath: string; 
   }
 
   const createNestedSections = (sections: WikiSection[]): SectionWithSubsections[] => {
-    const mainSections = sections.filter(section => section.toclevel === 1);
-    return mainSections.map((mainSection, mainIndex) => {
-      const nextMainIndex = sections.findIndex(
-        (s, i) => i > sections.indexOf(mainSection) && s.toclevel === 1
-      );
+    try {
+      if (!Array.isArray(sections) || sections.length === 0) {
+        console.warn("Invalid or empty sections array");
+        return [];
+      }
 
-      const sectionEnd = nextMainIndex === -1 ? sections.length : nextMainIndex;
-      const childSections = sections.slice(sections.indexOf(mainSection) + 1, sectionEnd);
-      
-      // Main section numbering: "Section 1", "Section 2", etc.
-      const numberedPath = `Section ${mainIndex + 1}`;
-      
-      return {
-        ...mainSection,
-        numberedPath,
-        subsections: buildSubsections(childSections, mainSection.toclevel + 1, `${mainIndex + 1}`)
-      };
-    });
+      const mainSections = sections.filter(section => section && section.toclevel === 1);
+      return mainSections.map((mainSection, mainIndex) => {
+        const nextMainIndex = sections.findIndex(
+          (s, i) => i > sections.indexOf(mainSection) && s.toclevel === 1
+        );
+
+        const sectionEnd = nextMainIndex === -1 ? sections.length : nextMainIndex;
+        const childSections = sections.slice(sections.indexOf(mainSection) + 1, sectionEnd);
+        
+        // Main section numbering: "Section 1", "Section 2", etc.
+        const numberedPath = `Section ${mainIndex + 1}`;
+        
+        return {
+          ...mainSection,
+          numberedPath,
+          subsections: buildSubsections(childSections, mainSection.toclevel + 1, `${mainIndex + 1}`)
+        };
+      });
+    } catch (error) {
+      console.error("Error creating nested sections:", error);
+      return [];
+    }
   };
 
   const buildSubsections = (sections: WikiSection[], level: number, parentPath: string): SectionWithSubsections[] => {
-    const directSubsections = sections.filter(section => section.toclevel === level);
+    try {
+      if (!Array.isArray(sections) || sections.length === 0) {
+        return [];
+      }
 
-    return directSubsections.map((section, index) => {
-      const nextSectionIndex = sections.findIndex(
-        (s, i) => i > sections.indexOf(section) && s.toclevel <= level
-      );
+      const directSubsections = sections.filter(section => section && section.toclevel === level);
 
-      const sectionEnd = nextSectionIndex === -1 ? sections.length : nextSectionIndex;
-      const childSections = sections.slice(sections.indexOf(section) + 1, sectionEnd);
-      
-      // Subsection numbering: "2.1", "2.1.1", etc.
-      const numberedPath = `${parentPath}.${index + 1}`;
+      return directSubsections.map((section, index) => {
+        const nextSectionIndex = sections.findIndex(
+          (s, i) => i > sections.indexOf(section) && s.toclevel <= level
+        );
 
-      return {
-        ...section,
-        numberedPath,
-        subsections: buildSubsections(childSections, level + 1, numberedPath)
-      };
-    });
+        const sectionEnd = nextSectionIndex === -1 ? sections.length : nextSectionIndex;
+        const childSections = sections.slice(sections.indexOf(section) + 1, sectionEnd);
+        
+        // Subsection numbering: "2.1", "2.1.1", etc.
+        const numberedPath = `${parentPath}.${index + 1}`;
+
+        return {
+          ...section,
+          numberedPath,
+          subsections: buildSubsections(childSections, level + 1, numberedPath)
+        };
+      });
+    } catch (error) {
+      console.error("Error building subsections:", error);
+      return [];
+    }
   };
   const nestedSections = createNestedSections(sections);
   const renderSections = (sections: SectionWithSubsections[]) => {
-    return sections.map((section) => (
-      <React.Fragment key={section.index}>
-        <div 
-          className="sidebar-section" 
-          id={`section-${section.index}`}
-          onMouseEnter={() => {
-            setQuizState({
-              summary: false,
-              section: true,
-              section_index: section.index,
-              hoveringState: true
-            })
-          }} 
-          onMouseLeave={() => {
-            setQuizState(noHoverState)
-          }}
-          onClick={() => {
-            window.location.hash = section.anchor;
-          }}
-        >
-          {quizState.hoveringState && quizState.section && 
-            Number(quizState.section_index) === Number(section.index) && (
-            <div className="quiz-button-container">
-              <button 
-                className="quiz-button"
-                onClick={() => {
-                  setQuizMode({
-                    quizGeneration: true,
-                    quizType: "general_knowledge",
-                    clickedElement: `section-${section.index}`,
-                    section_index: Number(section.index)
+    try {
+      if (!Array.isArray(sections) || sections.length === 0) {
+        return null;
+      }
+
+      return sections.map((section) => {
+        if (!section || !section.index) {
+          console.warn("Invalid section data:", section);
+          return null;
+        }
+
+        return (
+          <React.Fragment key={section.index}>
+            <div 
+              className="sidebar-section" 
+              id={`section-${section.index}`}
+              onMouseEnter={() => {
+                try {
+                  setQuizState({
+                    summary: false,
+                    section: true,
+                    section_index: section.index,
+                    hoveringState: true
                   })
-                }}
-                title="Generate Quiz"
-              >
-                <BsFileEarmarkText />
-              </button>
+                } catch (error) {
+                  console.error("Error setting quiz state on mouse enter:", error);
+                }
+              }} 
+              onMouseLeave={() => {
+                try {
+                  setQuizState(noHoverState)
+                } catch (error) {
+                  console.error("Error setting quiz state on mouse leave:", error);
+                }
+              }}
+              onClick={() => {
+                try {
+                  if (section.anchor) {
+                    window.location.hash = section.anchor;
+                  }
+                } catch (error) {
+                  console.error("Error navigating to section:", error);
+                }
+              }}
+            >
+              {quizState.hoveringState && quizState.section && 
+                Number(quizState.section_index) === Number(section.index) && (
+                <div className="quiz-button-container">
+                  <button 
+                    className="quiz-button"
+                    onClick={(e) => {
+                      try {
+                        e.stopPropagation();
+                        setQuizMode({
+                          quizGeneration: true,
+                          quizType: "general_knowledge",
+                          clickedElement: `section-${section.index}`,
+                          section_index: Number(section.index)
+                        })
+                      } catch (error) {
+                        console.error("Error setting quiz mode:", error);
+                      }
+                    }}
+                    title="Generate Quiz"
+                  >
+                    <BsFileEarmarkText />
+                  </button>
+                </div>
+              )}
+              <h2 className="section-title">{section.numberedPath?.includes("Section") ? section.numberedPath : `Section ${section.numberedPath}`}</h2>
+              <p className="section-content">{section.line || ""}</p>
             </div>
-          )}
-          <h2 className="section-title">{section.numberedPath.includes("Section") ? section.numberedPath : `Section ${section.numberedPath}`}</h2>
-          <p className="section-content">{section.line || ""}</p>
-        </div>
-        
-        {Array.isArray(section.subsections) && section.subsections.length > 0 && (
-          <div style={{marginLeft: '15px'}}>
-            {renderSections(section.subsections)}
-          </div>
-        )}
-      </React.Fragment>
-    ));
+            
+            {Array.isArray(section.subsections) && section.subsections.length > 0 && (
+              <div style={{marginLeft: '15px'}}>
+                {renderSections(section.subsections)}
+              </div>
+            )}
+          </React.Fragment>
+        );
+      });
+    } catch (error) {
+      console.error("Error rendering sections:", error);
+      return <div className="error-message">Error displaying sections</div>;
+    }
   };
 
   
@@ -663,9 +759,13 @@ const Sidebar = () => {
                     <div 
                       key={difficulty}
                       className={`settings-option ${questionDifficulty === difficulty ? 'selected' : ''}`}
-                      onClick={(e) => {
-                        setQuestionDifficulty(difficulty);
-                        browser.runtime.sendMessage({ type: 'toggleSettings', payload: { questionDifficulty: difficulty, numQuestions: numQuestions } });
+                      onClick={async (e) => {
+                        try {
+                          setQuestionDifficulty(difficulty);
+                          await sendMessageWithRetry({ type: 'toggleSettings', payload: { questionDifficulty: difficulty, numQuestions: numQuestions } });
+                        } catch (error) {
+                          console.error("Error updating difficulty setting:", error);
+                        }
                       }}
                     >
                       {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}
@@ -681,9 +781,13 @@ const Sidebar = () => {
                     <div 
                       key={num}
                       className={`settings-option ${numQuestions === num ? 'selected' : ''}`}
-                      onClick={(e) => {
-                        setNumQuestions(num);
-                        browser.runtime.sendMessage({ type: 'toggleSettings', payload: { questionDifficulty: questionDifficulty, numQuestions: num } });
+                      onClick={async (e) => {
+                        try {
+                          setNumQuestions(num);
+                          await sendMessageWithRetry({ type: 'toggleSettings', payload: { questionDifficulty: questionDifficulty, numQuestions: num } });
+                        } catch (error) {
+                          console.error("Error updating questions setting:", error);
+                        }
                       }}
                     >
                       {num} Questions
@@ -699,30 +803,47 @@ const Sidebar = () => {
       <div className="sidebar-content" ref={(el) => setSidebarContentElement(el)}>
         {summary && (
           <div className="sidebar-section" id="summary" onMouseEnter={() => {
-            setQuizState({
-              summary: true,
-              section: false,
-              section_index: undefined,
-              hoveringState: true
-            })
+            try {
+              setQuizState({
+                summary: true,
+                section: false,
+                section_index: undefined,
+                hoveringState: true
+              })
+            } catch (error) {
+              console.error("Error setting quiz state on summary hover:", error);
+            }
           }} onMouseLeave={() => {
-            setQuizState(noHoverState)
+            try {
+              setQuizState(noHoverState)
+            } catch (error) {
+              console.error("Error resetting quiz state on summary leave:", error);
+            }
           }}
           onClick={() => {
-            window.location.hash = "";
+            try {
+              window.location.hash = "";
+            } catch (error) {
+              console.error("Error navigating to summary:", error);
+            }
           }}
           >
             {quizState.hoveringState && quizState.summary && (
               <div className="quiz-button-container">
               <button 
                 className="quiz-button"
-                onClick={() => {
-                  setQuizMode({
-                    quizGeneration: true,
-                    quizType: undefined,
-                    clickedElement: "summary",
-                    section_index: undefined
-                  })
+                onClick={(e) => {
+                  try {
+                    e.stopPropagation();
+                    setQuizMode({
+                      quizGeneration: true,
+                      quizType: undefined,
+                      clickedElement: "summary",
+                      section_index: undefined
+                    })
+                  } catch (error) {
+                    console.error("Error setting quiz mode for summary:", error);
+                  }
                 }}
               >
                 <BsFileEarmarkText />

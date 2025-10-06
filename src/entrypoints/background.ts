@@ -2,14 +2,13 @@ import { convert } from 'html-to-text';
 import * as prompts from '../utils/prompts';
 import { generateQuizGemini } from '../utils/ai-helper';
 import * as types from '../utils/types';
-import { SELECTORS, isMetaSection, schema } from '../utils/constants';
-import type { WikiSection, StorageMetadata, StorageSchema } from '../utils/types';
-import { createStorageKeys } from '../utils/types';
+import { SELECTORS, isMetaSection } from '../utils/constants';
+import type { WikiSection } from '../utils/types';
 import { sessionStorage, getUserSettings, updateUserSettings } from '../utils/storage';
 import {jsonrepair} from 'jsonrepair'
-//Ajv for json validation
-// need to switch to zod for json validation
 
+// Places that need error handling -> ***** 
+  // When full error implrementation system is ready, customize error messages and display everythign necessary to make UI better
 
 export default defineBackground(() => {
 
@@ -37,7 +36,7 @@ export default defineBackground(() => {
     }
   } // add more when we shape more payloads
 
-  type ResponseData = Record<string, any>;
+  type ResponseData = Record<string, any>; // todo add more specific typing later
   type SendResponse = (response: ResponseData) => void;
 
   type Handler<T> = (payload: T, sendResponse: SendResponse) => void;
@@ -53,9 +52,9 @@ export default defineBackground(() => {
       let { url } = payload;
       url = url.match(idRegex)?.[0] || url;
       
-      // Use typed storage to get wiki page data
-      let data = await sessionStorage.getWikiPageData(url);
+      try {
 
+          let data = await sessionStorage.getWikiPageData(url);
       // If no data or data is outdated, fetch it
       if (!data.title || 
           !data.sections || 
@@ -64,13 +63,12 @@ export default defineBackground(() => {
         
         const title = decodeURIComponent(new URL(url).pathname.replace("/wiki/", ""));
         const fetched = await fetchAllData(title, url);
-        if (fetched) {
+        if (fetched) { 
           // Get the fresh data
           data = await sessionStorage.getWikiPageData(url);
         }
       }
 
-      // Format the response data (ensure all fields are defined)
       const formattedData: ResponseData = {
         title: data.title || "",
         summary: data.summary || {},
@@ -79,11 +77,15 @@ export default defineBackground(() => {
       };
       
       sendResponse(formattedData);
+    } catch (error) {
+      console.error("Error fetching wiki page data:", error);
+      sendResponse({"error": "Error fetching wiki page data"})  // *****
+    }
     },
     getQuizContent: async (payload, sendResponse): Promise<boolean> => {
       // error handling for LLM mistakes; if adding token system for users refund their tokens in case of error
       function checkQuizContent(quizContent: types.QuizContent, expectedQuestions: number): boolean {
-        if (!quizContent || !Array.isArray((quizContent as any).questions)) {
+        if (!quizContent || !('questions' in quizContent) || !Array.isArray(quizContent.questions)) {
           sendResponse({
             reply: `Model returned no questions. Expected ${expectedQuestions}. Try again or adjust settings.`
           });
@@ -113,6 +115,7 @@ export default defineBackground(() => {
           if (!validAnswer) issues.push("answer must be an integer index 0-3 corresponding to options A-D");
           if (issues.length > 0) {
             console.log("Invalid question detected", { index: idx, question });
+            // ***** : good error messages for dev, but not useful for a user
             sendResponse({
               reply: `Invalid question at #${idx + 1}: ${issues.join(", ")}. Please try again.`
             });
@@ -123,7 +126,6 @@ export default defineBackground(() => {
       }
       const { topic, bucket_a, url } = payload;
       
-      // Get settings from storage using typed storage
       const settings = await getUserSettings();
       const numQuestions = settings.numQuestions;
       
@@ -220,30 +222,45 @@ export default defineBackground(() => {
         console.log("enabled", enabled);
         sendResponse({"sidebarEnabled": enabled})
       })
+        .catch((error) => {
+          console.error("Error toggling sidebar:", error);
+          sendResponse({"error": "Error toggling sidebar"})
+        })
     },
     getSidebarState: (payload, sendResponse): void => {
       getSidebarState(payload).then((enabled) => {
         sendResponse({"sidebarEnabled": enabled})
       })
+        .catch((error) => {
+          console.error("Error getting sidebar state:", error);
+          sendResponse({"error": "Error getting sidebar state"})
+        })
     },
     toggleSettings: async (payload, sendResponse): Promise<void> => {
       const { questionDifficulty, numQuestions } = payload;
       console.log("toggleSettings", questionDifficulty, numQuestions);
-      
-      // Use typed storage for settings
-      await updateUserSettings({
-        questionDifficulty: questionDifficulty,
-        numQuestions: numQuestions
-      });
-      
-      sendResponse({"success": true})
+      try {
+        await updateUserSettings({
+          questionDifficulty: questionDifficulty,
+          numQuestions: numQuestions
+        });
+        sendResponse({"success": true})
+      } catch (error) {
+        console.error("Error updating user settings:", error);
+        sendResponse({"error": "Error updating user settings"})
+      }
     },
     getSettings: async (payload, sendResponse): Promise<void> => {
+      try {
       const settings = await getUserSettings();
       sendResponse({
         "questionDifficulty": settings.questionDifficulty, 
         "numQuestions": settings.numQuestions
       })
+    } catch (error) {
+      console.error("Error getting user settings:", error);
+      sendResponse({"error": "Error getting user settings"})  // *****
+    }
     }
   }
 
@@ -321,35 +338,49 @@ export default defineBackground(() => {
         .join('\n');
     }
 
-    // Get settings from storage using typed storage
     const settings = await getUserSettings();
     const questionDifficulty = settings.questionDifficulty;
     const numQuestions = settings.numQuestions;
 
-    // consider using: https://docs.boundaryml.com/guide/installation-language/typescript for json verification for gemini
-    // use generateQuiz for general testing
-    // Add settings (question variabvility and difficulty)
     const prompt = type === "section" 
       ? (questionDifficulty === "easy" ? prompts.USER_SECTION : questionDifficulty === "medium" ? prompts.USER_SECTION_COMPLEX : prompts.USER_SECTION_EXTREME)
       : (questionDifficulty === "easy" ? prompts.USER_SUMMARY : questionDifficulty === "medium" ? prompts.USER_SUMMARY_COMPLEX : prompts.USER_SUMMARY_EXTREME);
     
-    const quizContent: any = type === "section" ? 
-    await generateQuizGemini(prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
-      TOPIC: topic,
-      BUCKET_A: formatBucket(content)
-            }), prompts.fillPrompt(prompt, {
-        NUM_QUESTIONS: numQuestions.toString(),
-        TOPIC: topic,
-        SECTION_TITLE: sectionTitle || ""}))
-       :
-      await generateQuizGemini(prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
-        TOPIC: topic,
-        BUCKET_A: formatBucket(content)
-      }), prompts.fillPrompt(prompt, {
-        NUM_QUESTIONS: numQuestions.toString(),
-        TOPIC: topic}))
+    let quizContent: any; // Typing (check google AI library for types)
+    
+    try {
+      if (type === "section") {
+        quizContent = await generateQuizGemini(
+          prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
+            TOPIC: topic,
+            BUCKET_A: formatBucket(content)
+          }), 
+          prompts.fillPrompt(prompt, {
+            NUM_QUESTIONS: numQuestions.toString(),
+            TOPIC: topic,
+            SECTION_TITLE: sectionTitle || ""
+          })
+        );
+      } else {
+        quizContent = await generateQuizGemini(
+          prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
+            TOPIC: topic,
+            BUCKET_A: formatBucket(content)
+          }), 
+          prompts.fillPrompt(prompt, {
+            NUM_QUESTIONS: numQuestions.toString(),
+            TOPIC: topic
+          })
+        );
+      }
+    } catch (error: any) {
+      console.error("Error calling Gemini API:", error);
+      throw new Error(`Failed to connect to AI service: ${error?.message || String(error)}`);
+    }
 
-    if (!quizContent || !quizContent.candidates || !quizContent.candidates[0] || !quizContent.candidates[0].content) {
+    // Finish try/catching tmrw and fix missed spots in rest of files/above
+    
+    if (!quizContent || !quizContent.candidates || !quizContent.candidates[0] || !quizContent.candidates[0].content || !quizContent.candidates[0].content.parts[0].text) {
       console.error("Invalid quiz content structure:", quizContent);
       throw new Error("Model returned an empty response. Please try again or lower difficulty.");
     }
@@ -357,7 +388,6 @@ export default defineBackground(() => {
     const responseText = quizContent.candidates[0].content.parts[0].text;
     console.log("Raw response text:", responseText);
     
-    // jsonrepair | consider switcing to gpt for better json return
     let response: types.QuizContent;
     try {
       response = JSON.parse(jsonrepair(responseText)) as types.QuizContent;
@@ -388,58 +418,83 @@ export default defineBackground(() => {
   }
 
   const toggleSidebar = async (payload: "local" | "session") => {
+    try {
     const result = await browser.storage[payload].get("sidebarEnabled");
     const currentState: boolean = result.sidebarEnabled ?? false; // Default to false if undefined
     const newState = !currentState;
     await browser.storage[payload].set({sidebarEnabled: newState});
     console.log(`Sidebar toggled: ${currentState} -> ${newState}`);
     return newState;
+  } catch (error) {
+    console.error("Error in while toggling sidebar:", error);
+    return false;
+  }
   }
 
   const getSidebarState = async (payload: "local" | "session") => {
+    try {
     const result = await browser.storage[payload].get("sidebarEnabled");
     const currentState: boolean = result.sidebarEnabled ?? false; // Default to false if undefined
     console.log(`Sidebar state retrieved: ${currentState}`);
     return currentState;
+  } catch (error) {
+    console.error("Error in while getting sidebar state:", error);
+    return false;
+  }
   }
 
   const makeWikipediaRequest = async (url: string) => {
+    const maxRetries = 2; 
+    const baseDelayMs = 250;
     const now = Date.now();
-    
+
     Object.keys(requestQueue).forEach(key => {
-      if (now - requestQueue[key].timestamp > 60000) { 
+      if (now - requestQueue[key].timestamp > 60000) {
         delete requestQueue[key];
       }
     });
 
-    const lastRequest = Object.values(requestQueue).reduce((latest, current) => 
+    const lastRequest = Object.values(requestQueue).reduce((latest, current) =>
       current.timestamp > latest ? current.timestamp : latest, 0);
-    
     if (now - lastRequest < MIN_REQUEST_INTERVAL) {
       await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL - (now - lastRequest)));
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const attemptTime = Date.now();
+      const requestId = `${url}_${attemptTime}_${attempt}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      try {
+        requestQueue[requestId] = { timestamp: attemptTime };
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'WikiChromeAI/1.0 (https://github.com/BostonCelticFanCoder/WikiChromeAI) Chrome Extension',
+            'Api-User-Agent': 'WikiChromeAI/1.0 (https://github.com/BostonCelticFanCoder/WikiChromeAI)'
+          }
+        });
 
-    try {
-      const requestId = `${url}_${now}`;
-      requestQueue[requestId] = {
-        timestamp: now
-      };
-
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'WikiChromeAI/1.0 (https://github.com/BostonCelticFanCoder/WikiChromeAI; yinmaksim@gmail.com) Chrome Extension',
-          'Api-User-Agent': 'WikiChromeAI/1.0 (https://github.com/BostonCelticFanCoder/WikiChromeAI; yinmaksim@gmail.com)'
+        if (response.status >= 400 && response.status < 500) {
+          return response;
         }
-      });
-      clearTimeout(timeoutId);
-      return response;
-    } finally {
-      clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          if (attempt === maxRetries) return response;
+          await new Promise(res => setTimeout(res, baseDelayMs * Math.pow(2, attempt)));
+          continue;
+        }
+
+        return response; 
+      } catch (error) {
+        if (attempt === maxRetries) throw error;
+        await new Promise(res => setTimeout(res, baseDelayMs * Math.pow(2, attempt)));
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
+
+    throw new Error('Wikipedia request failed after retries');
   };
 
   
@@ -558,6 +613,8 @@ export default defineBackground(() => {
       
       const title = decodeURIComponent(new URL(baseUrl).pathname.replace("/wiki/", ""));
       await fetchAllData(title, baseUrl);
+    } catch (error) {
+      console.error("Error in while handling Wikipedia page update:", error);
     } finally {
       isProcessing = false;
     }
@@ -686,12 +743,16 @@ export default defineBackground(() => {
   });
 
   browser.tabs.onActivated.addListener(async (activeInfo) => {  
+    try {
     const tab = await browser.tabs.get(activeInfo.tabId);
     if (tab.url?.includes("wikipedia.org/wiki/")) {
       const url = tab.url.match(idRegex)?.[0] || tab.url;
       console.log("onActivated", url);
       handlePageUpdate(url);
     }
+  } catch (error) {
+    console.error("Error while getting active tab:", error);
+  }
   });
 
   

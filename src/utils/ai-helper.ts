@@ -9,8 +9,8 @@ const genai = new GoogleGenAI({
     apiKey: "AIzaSyANGVjqoOP_LKm2Lz1DMK9AkJE4vJWr8cg"
 });
 
-
-export async function generateQuizGemini(systemPrompt: string, userPrompt: string) {
+// need to work on typing the LLM response
+export async function generateQuizGemini(systemPrompt: string, userPrompt: string): Promise<any> {
     try {
         const response = await genai.models.generateContent({
             model: "gemini-2.5-flash",

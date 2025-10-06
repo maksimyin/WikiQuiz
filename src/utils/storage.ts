@@ -80,6 +80,7 @@ export const sessionStorage = {
 };
 
 
+
 export const localStorage = {
 
   async get<K extends keyof LocalStorageData>(keys: K[]): Promise<Pick<LocalStorageData, K>> {

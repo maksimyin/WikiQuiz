@@ -1,5 +1,5 @@
 export default defineContentScript({
-    matches: ['*://*.wikipedia.org/*'],
+    matches: ['*://*.wikipedia.org/wiki/*'],
     main: async (ctx) => {
       if (!window.location.hostname.endsWith('wikipedia.org')) {
         return;
