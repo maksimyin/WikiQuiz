@@ -6,6 +6,7 @@ import { SELECTORS, isMetaSection } from '../utils/constants';
 import type { WikiSection } from '../utils/types';
 import { sessionStorage, getUserSettings, updateUserSettings } from '../utils/storage';
 import {jsonrepair} from 'jsonrepair'
+import {ExtensionError} from '../utils/types';
 
 // Places that need error handling -> ***** 
   // When full error implrementation system is ready, customize error messages and display everythign necessary to make UI better

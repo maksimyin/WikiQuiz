@@ -8,7 +8,6 @@ import * as types from '../utils/types';
 import Loading from './Loading';
 import { browser } from 'wxt/browser';
 import sidebarIcon from '../assets/icon/transparent_128.png';
-import { sendMessageWithRetry } from '../utils/messaging';
 
 const Sidebar = () => {
   const [sections, setSections] = useState<WikiSection[]>([]);
@@ -42,7 +41,7 @@ const Sidebar = () => {
   // Function to handle user clicking the toggle button
   const handleToggleClick = async () => {
     try {
-    const result: {sidebarEnabled: boolean} = await sendMessageWithRetry({ type: 'toggleSidebar', payload: 'session' });
+    const result: {sidebarEnabled: boolean} = await browser.runtime.sendMessage({ type: 'toggleSidebar', payload: 'session' });
     setIsCollapsed(!result.sidebarEnabled);
     } catch (error) {
       console.error("Failed to toggle sidebar:", error);
@@ -90,7 +89,7 @@ const Sidebar = () => {
       return;
     }
     
-    const response: {success: boolean} = await sendMessageWithRetry({
+    const response: {success: boolean} = await browser.runtime.sendMessage({
       type: 'initialization'
     });
     if (!response.success) {
@@ -98,7 +97,7 @@ const Sidebar = () => {
       return;
     }
 
-    const data: {sections: WikiSection[], title: string, summary: Record<number, string>} = await sendMessageWithRetry({
+    const data: {sections: WikiSection[], title: string, summary: Record<number, string>} = await browser.runtime.sendMessage({
       type: 'getData',
       payload: {
         url: window.location.href
@@ -129,7 +128,7 @@ const Sidebar = () => {
     setSummary({});
     async function getSidebarEnabled() {
       try {
-      const enabled: {sidebarEnabled: boolean} = await sendMessageWithRetry({ type: 'getSidebarState', payload: 'session' });
+      const enabled: {sidebarEnabled: boolean} = await browser.runtime.sendMessage({ type: 'getSidebarState', payload: 'session' });
       setIsCollapsed(!enabled.sidebarEnabled);
       } catch (error) {
         console.error("Failed to get sidebar state:", error);
@@ -139,7 +138,7 @@ const Sidebar = () => {
     getSidebarEnabled();
     async function getSettings() {
       try {
-      const settings: {questionDifficulty: 'easy' | 'medium' | 'hard', numQuestions: 4 | 7} = await sendMessageWithRetry({ type: 'getSettings', payload: 'session' });
+      const settings: {questionDifficulty: 'easy' | 'medium' | 'hard', numQuestions: 4 | 7} = await browser.runtime.sendMessage({ type: 'getSettings', payload: 'session' });
       setQuestionDifficulty(settings.questionDifficulty);
       setNumQuestions(settings.numQuestions);
       } catch (error) {
@@ -175,7 +174,7 @@ const Sidebar = () => {
         
         const currentQuizMode = { ...quizMode };
         
-        const quizContent: {reply: types.QuizContent | string} = await sendMessageWithRetry({
+        const quizContent: {reply: types.QuizContent | string} = await browser.runtime.sendMessage({
           type: 'getQuizContent',
           payload: {
             topic: title,
@@ -762,7 +761,7 @@ const Sidebar = () => {
                       onClick={async (e) => {
                         try {
                           setQuestionDifficulty(difficulty);
-                          await sendMessageWithRetry({ type: 'toggleSettings', payload: { questionDifficulty: difficulty, numQuestions: numQuestions } });
+                          await browser.runtime.sendMessage({ type: 'toggleSettings', payload: { questionDifficulty: difficulty, numQuestions: numQuestions } });
                         } catch (error) {
                           console.error("Error updating difficulty setting:", error);
                         }
@@ -784,7 +783,7 @@ const Sidebar = () => {
                       onClick={async (e) => {
                         try {
                           setNumQuestions(num);
-                          await sendMessageWithRetry({ type: 'toggleSettings', payload: { questionDifficulty: questionDifficulty, numQuestions: num } });
+                          await browser.runtime.sendMessage({ type: 'toggleSettings', payload: { questionDifficulty: questionDifficulty, numQuestions: num } });
                         } catch (error) {
                           console.error("Error updating questions setting:", error);
                         }
