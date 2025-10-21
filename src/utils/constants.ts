@@ -116,3 +116,8 @@ export const isMetaSection = (title: string) => {
 }
 
 
+
+// Proxy configuration for server-side API key protection
+// Update PROXY_URL to where your proxy runs. Optional PROXY_TOKEN should match server .env
+export const PROXY_URL = "http://localhost:8787";
+export const PROXY_TOKEN = "";

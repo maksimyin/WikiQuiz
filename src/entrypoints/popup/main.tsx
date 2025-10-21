@@ -23,3 +23,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </React.StrictMode>,
 );
+
+window.addEventListener('error', (e) => {
+  console.error('GlobalError', e.error ?? e.message);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('UnhandledRejection', e.reason);
+});

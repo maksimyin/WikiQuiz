@@ -84,12 +84,6 @@ export const createStorageKeys = (url: string) => ({
   metadata: `metadata_${url}` as const,
 });
 
-export type ExtensionError = {
-  code: string;
-  message: string;
-  details?: string;
-  httpStatus?: number;
-  retryable?: boolean;
-}
+
 
 export type WikiPageKeys = ReturnType<typeof createStorageKeys>;

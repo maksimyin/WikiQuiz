@@ -1,32 +1,34 @@
 // After testing and development, may be relevant to test different models
-import { CohereClientV2, CohereError } from "cohere-ai";
-import {GoogleGenAI} from "@google/genai";
-
-
-
-
-const genai = new GoogleGenAI({
-    apiKey: "AIzaSyANGVjqoOP_LKm2Lz1DMK9AkJE4vJWr8cg"
-});
+import { PROXY_URL, PROXY_TOKEN } from "./constants";
 
 // need to work on typing the LLM response
 export async function generateQuizGemini(systemPrompt: string, userPrompt: string): Promise<any> {
-    try {
-        const response = await genai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: userPrompt,
-            config: {
-                systemInstruction: systemPrompt,
-                temperature: 0.395,
-                responseMimeType: "application/json"
-            }
-        });
+  try {
+    const response = await fetch(`${PROXY_URL}/api/gemini/generate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(PROXY_TOKEN ? { "x-proxy-token": PROXY_TOKEN } : {})
+      },
+      body: JSON.stringify({
+        systemPrompt: systemPrompt,
+        userPrompt: userPrompt,
+        model: "gemini-2.5-flash",
+        temperature: 0.395,
+        responseMimeType: "application/json"
+      })
+    });
 
-        console.log(response);
-        return response;
-    } catch (error) {
-        console.log(error);
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Proxy error ${response.status}: ${text}`);
     }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.log(error);
+  }
 }
 
 

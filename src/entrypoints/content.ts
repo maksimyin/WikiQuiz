@@ -1,3 +1,5 @@
+import {browser} from 'wxt/browser';
+
 export default defineContentScript({
     matches: ['*://*.wikipedia.org/wiki/*'],
     main: async (ctx) => {
@@ -22,6 +24,13 @@ export default defineContentScript({
           detail: message 
         }));
         return true;
+      });
+
+      window.addEventListener('error', (e) => {
+        console.error('GlobalError', e.error ?? e.message);
+      });
+      window.addEventListener('unhandledrejection', (e) => {
+        console.error('UnhandledRejection', e.reason);
       });
     }
   });

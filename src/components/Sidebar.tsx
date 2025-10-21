@@ -8,6 +8,7 @@ import * as types from '../utils/types';
 import Loading from './Loading';
 import { browser } from 'wxt/browser';
 import sidebarIcon from '../assets/icon/transparent_128.png';
+import type { WikiSection } from '../utils/types';
 
 const Sidebar = () => {
   const [sections, setSections] = useState<WikiSection[]>([]);
@@ -28,7 +29,6 @@ const Sidebar = () => {
   const [isViewingArticle, setIsViewingArticle] = useState(false);
   const [sidebarContentElement, setSidebarContentElement] = useState<HTMLDivElement | null>(null);
   
-  // work on properly typing await responses
 
   useEffect(() => {
     if (isCollapsed) {
@@ -41,7 +41,12 @@ const Sidebar = () => {
   // Function to handle user clicking the toggle button
   const handleToggleClick = async () => {
     try {
-    const result: {sidebarEnabled: boolean} = await browser.runtime.sendMessage({ type: 'toggleSidebar', payload: 'session' });
+    const result: {sidebarEnabled?: boolean, error?: string} = await browser.runtime.sendMessage({ type: 'toggleSidebar', payload: 'session' });
+    if (result.error) {
+      console.error("Failed to toggle sidebar:", result.error);
+      setError(result.error);
+      return;
+    }
     setIsCollapsed(!result.sidebarEnabled);
     } catch (error) {
       console.error("Failed to toggle sidebar:", error);
@@ -89,21 +94,35 @@ const Sidebar = () => {
       return;
     }
     
-    const response: {success: boolean} = await browser.runtime.sendMessage({
+    const response: {success?: boolean, error?: string} = await browser.runtime.sendMessage({
       type: 'initialization'
     });
+    if (response.error) {
+      console.error("Failed to initialize connection with background script:", response.error);
+      setError(response.error);
+      setIsLoading(false);
+      return;
+    }
     if (!response.success) {
       console.error("Failed to initialize connection with background script");
+      setError("Failed to initialize connection with background script");
+      setIsLoading(false);
       return;
     }
 
-    const data: {sections: WikiSection[], title: string, summary: Record<number, string>} = await browser.runtime.sendMessage({
+    const data: {sections?: WikiSection[], title?: string, summary?: Record<number, string>, error?: string} = await browser.runtime.sendMessage({
       type: 'getData',
       payload: {
         url: window.location.href
       }
     });
 
+    if (data.error) {
+      console.error("Failed to fetch Wikipedia page data:", data.error);
+      setError(data.error);
+      setIsLoading(false);
+      return;
+    }
 
       data.sections && setSections(data.sections); // need to add logic removing unnecessary sections like referebcesm works cited, further reading, external links (can be configured to be shown in settings)
       data.title && setTitle(data.title);
@@ -128,21 +147,36 @@ const Sidebar = () => {
     setSummary({});
     async function getSidebarEnabled() {
       try {
-      const enabled: {sidebarEnabled: boolean} = await browser.runtime.sendMessage({ type: 'getSidebarState', payload: 'session' });
+      const enabled: {sidebarEnabled?: boolean, error?: string} = await browser.runtime.sendMessage({ type: 'getSidebarState', payload: 'session' });
+      if (enabled.error) {
+        console.warn("Failed to get sidebar state:", enabled.error);
+        setError(enabled.error || "Failed to get sidebar state; Opening sidebar by default");
+        setIsCollapsed(false);
+        return;
+      }
       setIsCollapsed(!enabled.sidebarEnabled);
       } catch (error) {
-        console.error("Failed to get sidebar state:", error);
-        setIsCollapsed(true);
+        console.warn("Failed to get sidebar state:", error);
+        setError(error instanceof Error ? error.message : "Failed to get sidebar state; Opening sidebar by default");
+        setIsCollapsed(false);
       }
     }
     getSidebarEnabled();
     async function getSettings() {
       try {
-      const settings: {questionDifficulty: 'easy' | 'medium' | 'hard', numQuestions: 4 | 7} = await browser.runtime.sendMessage({ type: 'getSettings', payload: 'session' });
-      setQuestionDifficulty(settings.questionDifficulty);
-      setNumQuestions(settings.numQuestions);
+      const settings: {questionDifficulty?: 'easy' | 'medium' | 'hard', numQuestions?: 4 | 7, error?: string} = await browser.runtime.sendMessage({ type: 'getSettings', payload: 'session' });
+      if (settings.error) {
+        console.error("Failed to get extension settings:", settings.error);
+        setError(settings.error);
+        setQuestionDifficulty('medium');
+        setNumQuestions(4);
+        return;
+      }
+      if (settings.questionDifficulty) setQuestionDifficulty(settings.questionDifficulty);
+      if (settings.numQuestions) setNumQuestions(settings.numQuestions);
       } catch (error) {
         console.error("Failed to get extension settings:", error);
+        setError(error instanceof Error ? error.message : "Failed to get extension settings");
         setQuestionDifficulty('medium');
         setNumQuestions(4);
       }
@@ -761,9 +795,14 @@ const Sidebar = () => {
                       onClick={async (e) => {
                         try {
                           setQuestionDifficulty(difficulty);
-                          await browser.runtime.sendMessage({ type: 'toggleSettings', payload: { questionDifficulty: difficulty, numQuestions: numQuestions } });
+                          const result: {success?: boolean, error?: string} = await browser.runtime.sendMessage({ type: 'toggleSettings', payload: { questionDifficulty: difficulty, numQuestions: numQuestions } });
+                          if (result.error) {
+                            console.error("Error updating difficulty setting:", result.error);
+                            setError(result.error);
+                          }
                         } catch (error) {
                           console.error("Error updating difficulty setting:", error);
+                          setError(error instanceof Error ? error.message : "Error updating difficulty setting");
                         }
                       }}
                     >
@@ -783,9 +822,14 @@ const Sidebar = () => {
                       onClick={async (e) => {
                         try {
                           setNumQuestions(num);
-                          await browser.runtime.sendMessage({ type: 'toggleSettings', payload: { questionDifficulty: questionDifficulty, numQuestions: num } });
+                          const result: {success?: boolean, error?: string} = await browser.runtime.sendMessage({ type: 'toggleSettings', payload: { questionDifficulty: questionDifficulty, numQuestions: num } });
+                          if (result.error) {
+                            console.error("Error updating questions setting:", result.error);
+                            setError(result.error);
+                          }
                         } catch (error) {
                           console.error("Error updating questions setting:", error);
+                          setError(error instanceof Error ? error.message : "Error updating questions setting");
                         }
                       }}
                     >
@@ -800,6 +844,19 @@ const Sidebar = () => {
       </header>
       
       <div className="sidebar-content" ref={(el) => setSidebarContentElement(el)}>
+        {error && (
+          <div className="sidebar-section error-section">
+            <h3 className="section-title">Error</h3>
+            <p className="section-content error-message">{error}</p>
+            <button 
+              className="quiz-nav-button" 
+              onClick={() => setError(null)}
+              style={{marginTop: '10px'}}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         {summary && (
           <div className="sidebar-section" id="summary" onMouseEnter={() => {
             try {
@@ -816,14 +873,14 @@ const Sidebar = () => {
             try {
               setQuizState(noHoverState)
             } catch (error) {
-              console.error("Error resetting quiz state on summary leave:", error);
+              console.warn("Error resetting quiz state on summary leave:", error);
             }
           }}
           onClick={() => {
             try {
               window.location.hash = "";
             } catch (error) {
-              console.error("Error navigating to summary:", error);
+              console.warn("Error navigating to summary:", error);
             }
           }}
           >
