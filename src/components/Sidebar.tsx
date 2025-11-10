@@ -888,6 +888,7 @@ const Sidebar = () => {
               <div className="quiz-button-container">
               <button 
                 className="quiz-button"
+                title="Generate Quiz"
                 onClick={(e) => {
                   try {
                     e.stopPropagation();

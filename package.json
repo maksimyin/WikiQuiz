@@ -20,6 +20,7 @@
     "cohere-ai": "^7.17.1",
     "html-to-text": "^9.0.5",
     "jsonrepair": "^3.13.0",
+    "openai": "^6.6.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-error-boundary": "^6.0.0",

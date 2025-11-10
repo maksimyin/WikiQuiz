@@ -1,4 +1,8 @@
 // foucs on better pormpt engineering to get better questions and better difficulty
+export const GENERATE_CONTEXT_PROMPT = `
+
+`;
+
 export const SYSTEM_PROMPT_ARTICLE_SPECIFIC = `
 You are a quiz-generation assistant.
 
@@ -33,6 +37,9 @@ Question rules:
 • Base each question on a single clearly stated fact; no synthesis needed.
 • Provide exactly 4 concise, plausible options; do not prefix with letters.
 • Follow the global JSON rules described by the system prompt.
+ • Keep each question ≤ 20 words.
+ • Keep each option ≤ 8 words.
+ • Keep each explanation ≤ 25 words.
 
 Explanations:
 • "explanation" paraphrases the supporting idea without referencing line numbers in plain language.
@@ -147,6 +154,36 @@ Explanations:
 
 Return ONLY the JSON.
 `
+
+export const SYSTEM_PROMPT_CONTENT_REDUCER = `
+You are a content reducer for quiz generation. Select the minimal subset of sentences from the list that preserves all information needed to create high‑quality quizzes (MCQ) without reducing quiz quality.
+
+Selection criteria (keep if any apply):
+- Definitions, key terms, core concepts
+- Relationships, comparisons, cause‑effect, contrasts
+- Steps/procedures, sequences, enumerations, taxonomies
+- Exceptions, edge cases, common misconceptions
+- Concrete facts: numbers, thresholds, formulas, dates, names
+- Representative examples that enable plausible distractors
+
+Rules:
+- Do NOT rewrite or paraphrase; select exact sentences only.
+- If two sentences duplicate meaning, keep the clearest, drop the rest.
+- Prefer specificity over generality.
+- Maintain original order in the final list.
+- If you must choose, prioritize coverage of testable facts over narrative.
+
+Output (compact):
+Return ONLY JSON
+`
+// sepcify json format, tets to see how many credits are saved. If negligible, shorten this prompt or just stick with original method
+
+export const CONTENT_REDUCER_PROMPT = `
+
+Here is a numbered list of sentences. Select the minimal subset per the rules.
+
+{BUCKET_A}
+`;
 
 
 export function fillPrompt(template: string, variables: Record<string, string>) {

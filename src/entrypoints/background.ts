@@ -1,6 +1,7 @@
 import { convert } from 'html-to-text';
 import * as prompts from '../utils/prompts';
 import { generateQuizGemini } from '../utils/ai-helper';
+import { generateQuizOpenAI } from '../utils/ai-helper';
 import * as types from '../utils/types';
 import { SELECTORS, isMetaSection } from '../utils/constants';
 import type { WikiSection } from '../utils/types';
@@ -385,41 +386,54 @@ export default defineBackground(() => {
     let quizContent: any; // Typing (check google AI library for types)
     
     try {
-      if (type === "section") {
-        quizContent = await generateQuizGemini(
-          prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
-            TOPIC: topic,
-            BUCKET_A: formatBucket(content)
-          }), 
-          prompts.fillPrompt(prompt, {
+      const system = prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
+        NUM_QUESTIONS: numQuestions.toString(),
+        TOPIC: topic,
+        BUCKET_A: formatBucket(content)
+      });
+      const user = type === "section"
+        ? prompts.fillPrompt(prompt, {
             NUM_QUESTIONS: numQuestions.toString(),
             TOPIC: topic,
             SECTION_TITLE: sectionTitle || ""
           })
-        );
-      } else {
-        quizContent = await generateQuizGemini(
-          prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
-            TOPIC: topic,
-            BUCKET_A: formatBucket(content)
-          }), 
-          prompts.fillPrompt(prompt, {
+        : prompts.fillPrompt(prompt, {
             NUM_QUESTIONS: numQuestions.toString(),
             TOPIC: topic
-          })
-        );
+          });
+
+      // Try OpenAI first
+      try {
+        const openAiOptions =
+          questionDifficulty === "hard"
+            ? { model: "gpt-4.1", temperature: 0.3875, max_output_tokens: 2850 }
+            : questionDifficulty === "medium"
+              ? { model: "gpt-4o-mini", temperature: 0.335, max_output_tokens: 2350 }
+              : { model: "gpt-4o-mini", temperature: 0.30, max_output_tokens: 1650 };
+        quizContent = await generateQuizOpenAI(system, user, openAiOptions);
+      } catch (openAiErr: any) {
+        console.warn("OpenAI generation failed, falling back to Gemini:", openAiErr?.message || String(openAiErr));
+        // Fallback to Gemini
+        quizContent = await generateQuizGemini(system, user);
       }
     } catch (error: any) {
-      console.error("Error calling Gemini API:", error);
-      throw new Error(`Failed to connect to AI service: ${error?.message || String(error)}`);
-    }
-    
-    if (!quizContent || !quizContent.candidates || !quizContent.candidates[0] || !quizContent.candidates[0].content || !quizContent.candidates[0].content.parts[0].text) {
-      console.error("Invalid quiz content structure:", quizContent);
-      throw new Error("Model returned an empty response. Please try again or lower difficulty.");
+      console.error("Error during quiz generation (both providers):", error);
+      throw new Error(`Quiz generation failed: ${error?.message || String(error)}`);
     }
 
-    const responseText = quizContent.candidates[0].content.parts[0].text;
+    console.log("quizContent", quizContent);
+
+    let responseText: string | undefined;
+    if (quizContent?.choices?.[0]?.message?.content) {
+      responseText = quizContent.choices[0].message.content;
+    }
+    if (!responseText && quizContent?.candidates?.[0]?.content?.parts?.[0]?.text) {
+      responseText = quizContent.candidates[0].content.parts[0].text;
+    }
+    if (!responseText || typeof responseText !== "string") {
+      console.error("Invalid or empty AI response structure:", quizContent);
+      throw new Error("Model returned no content. Check proxy logs or try again later.");
+    }
     console.log("Raw response text:", responseText);
     
     let response: types.QuizContent;
@@ -436,7 +450,6 @@ export default defineBackground(() => {
       throw new Error("Model returned invalid quiz structure. Please retry.");
     }
     
-    // sanitize fields and coerce answer safely
     response.questions = response.questions.map((q: any) => {
       const coercedAnswer = typeof q?.answer === "number" ? q.answer : parseInt(String(q?.answer ?? ""), 10);
       return {
