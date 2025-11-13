@@ -1,8 +1,8 @@
 {
-  "name": "wiki-extension-ai",
-  "description": "manifest.json description",
+  "name": "WikiQuiz - AI Study Tool",
+  "description": "A chrome extension powered by AI to help you study general knowledge and specific Wikipedia article sections",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "scripts": {
     "dev": "wxt",

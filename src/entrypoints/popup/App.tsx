@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 import { browser } from 'wxt/browser';
-import { PROXY_URL } from '../../utils/constants';
+import { PROXY_URL, FEEDBACK_URL } from '../../utils/constants';
 
 // update so changes here affect sidebar states too
 // update text and styles
@@ -26,7 +26,7 @@ function App() {
 
   return (
     <div className="popup-container">
-      <h2 className="popup-title">Wiki AI Helper</h2>
+      <h2 className="popup-title">WikiQuiz - AI Study Tool</h2>
 
       <div className="popup-section">
         <div className="label">How to use</div>
@@ -56,6 +56,23 @@ function App() {
           <p className={`health ${health}`}>Proxy: {health === 'ok' ? 'Reachable' : 'Error'}</p>
         )}
       </div>
+
+      {FEEDBACK_URL ? (
+        <div className="popup-section">
+          <div className="label">Feedback</div>
+          <p className="hint">Tell us what worked and what to improve.</p>
+          <div className="row feedback-row">
+            <a
+              className="btn btn--feedback"
+              href={FEEDBACK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open Feedback Form
+            </a>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

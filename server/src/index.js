@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
+import rateLimit from "express-rate-limit";
 
 dotenv.config();
 
@@ -15,6 +16,21 @@ const originOption = !corsEnv || corsEnv.trim() === "*"
 
 app.use(cors({ origin: originOption }));
 app.use(express.json({ limit: "1mb" }));
+
+// Basic request timeout for safety (30s)
+app.use((_req, res, next) => {
+  res.setTimeout(30_000);
+  next();
+});
+
+// Simple rate limiter for beta traffic
+const limiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(limiter);
 
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
@@ -79,7 +95,12 @@ app.post("/api/gemini/generate", async (req, res) => {
         responseMimeType,
       },
     });
-    console.log(response);
+    // Log minimal metadata to avoid leaking prompt content
+    console.log("[gemini] ok", {
+      model,
+      temperature,
+      responseMimeType,
+    });
     return res.status(200).json(response);
   } catch (err) {
     console.error("/api/gemini/generate error", err);
@@ -101,7 +122,7 @@ app.post("/api/openai/generate", async (req, res) => {
       userPrompt,
       model = "gpt-4o-mini",
       temperature = 0.275,
-      max_output_tokens = 1500,
+      max_output_tokens = 1000,
       response_format = { type: "json_object" },
     } = req.body || {};
 
@@ -122,7 +143,12 @@ app.post("/api/openai/generate", async (req, res) => {
         { role: "user", content: userPrompt },
       ],
     });
-    console.log(response);
+    // Log minimal metadata to avoid leaking prompt content
+    console.log("[openai] ok", {
+      model,
+      temperature,
+      max_tokens: max_output_tokens,
+    });
     return res.status(200).json(response);
   } catch (err) {
     const status = err?.status || err?.response?.status || 500;

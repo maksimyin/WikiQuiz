@@ -117,7 +117,9 @@ export const isMetaSection = (title: string) => {
 
 
 
+
 // Proxy configuration for server-side API key protection
-// Update PROXY_URL to where your proxy runs. Optional PROXY_TOKEN should match server .env
-export const PROXY_URL = "http://localhost:8787";
-export const PROXY_TOKEN = "";
+// Configure via Vite env vars for beta builds: VITE_PROXY_URL, VITE_PROXY_TOKEN, VITE_FEEDBACK_URL
+export const PROXY_URL = import.meta.env['VITE_PROXY_URL'];
+export const PROXY_TOKEN = import.meta.env['VITE_PROXY_TOKEN'];
+export const FEEDBACK_URL = import.meta.env['VITE_FEEDBACK_URL'];
