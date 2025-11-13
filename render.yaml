@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: wikiquiz-ai-proxy
+    rootDir: server
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node src/index.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PROXY_TOKEN
+        sync: false
+      - key: CORS_ORIGINS
+        value: "*"
+
+

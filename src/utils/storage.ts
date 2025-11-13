@@ -80,6 +80,7 @@ export const sessionStorage = {
 };
 
 
+
 export const localStorage = {
 
   async get<K extends keyof LocalStorageData>(keys: K[]): Promise<Pick<LocalStorageData, K>> {
@@ -114,7 +115,7 @@ export const getUserSettings = async (): Promise<{
   numQuestions: 4 | 7;
   sidebarEnabled: boolean;
 }> => {
-  const result = await sessionStorage.get(["questionDifficulty", "numQuestions", "sidebarEnabled"]);
+  const result = await localStorage.get(["questionDifficulty", "numQuestions", "sidebarEnabled"]);
   
   return {
     questionDifficulty: result.questionDifficulty || "medium",
@@ -129,7 +130,7 @@ export const updateUserSettings = async (settings: Partial<{
   numQuestions: 4 | 7;
   sidebarEnabled: boolean;
 }>): Promise<void> => {
-  await sessionStorage.set(settings);
+  await localStorage.set(settings);
 };
 
 
@@ -141,7 +142,7 @@ export const isWikiPageKey = (key: string): key is `title_${string}` | `summary_
 };
 
 
-export const extractUrlFromKey = (key: string): string | null => {
+export const extractUrlFromKey = (key: string): string | undefined => {
   const match = key.match(/^(?:title_|summary_|sections_|metadata_)(.+)$/);
-  return match ? match[1] : null;
+  return match ? match[1] : undefined;
 }; 

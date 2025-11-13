@@ -1,15 +1,12 @@
 import { convert } from 'html-to-text';
 import * as prompts from '../utils/prompts';
 import { generateQuizGemini } from '../utils/ai-helper';
+import { generateQuizOpenAI } from '../utils/ai-helper';
 import * as types from '../utils/types';
-import { SELECTORS, isMetaSection, schema } from '../utils/constants';
-import type { WikiSection, StorageMetadata, StorageSchema } from '../utils/types';
-import { createStorageKeys } from '../utils/types';
+import { SELECTORS, isMetaSection } from '../utils/constants';
+import type { WikiSection } from '../utils/types';
 import { sessionStorage, getUserSettings, updateUserSettings } from '../utils/storage';
 import {jsonrepair} from 'jsonrepair'
-//Ajv for json validation
-// need to switch to zod for json validation
-
 
 export default defineBackground(() => {
 
@@ -18,6 +15,13 @@ export default defineBackground(() => {
     initialization: undefined,
     getData: {
       url: string
+    },
+    clientError: {
+      surface?: string,
+      message?: string,
+      stack?: string,
+      componentStack?: string,
+      url?: string
     },
     getQuizContent: {
       topic: string,
@@ -35,7 +39,7 @@ export default defineBackground(() => {
       questionDifficulty: "easy" | "medium" | "hard",
       numQuestions: 4 | 7
     }
-  } // add more when we shape more payloads
+  }
 
   type ResponseData = Record<string, any>;
   type SendResponse = (response: ResponseData) => void;
@@ -47,52 +51,72 @@ export default defineBackground(() => {
     [K in keyof PayloadMap]: Handler<PayloadMap[K]>
   } = {
     initialization: (payload, sendResponse) => {
-      sendResponse({"success": true})
+      try {
+        sendResponse({"success": true})
+      } catch (error) {
+        console.error("Error initializing:", error);
+        sendResponse({"error": "Error initializing connection to extension"})
+      }
+    },
+    clientError: (payload, sendResponse) => {
+      try {
+        console.error("Client error reported:", payload);
+        sendResponse({ success: true });
+      } catch (error) {
+        console.error("Error handling clientError:", error);
+        sendResponse({ error: "Error recording client error" });
+      }
     },
     getData: async (payload, sendResponse) => {
       let { url } = payload;
       url = url.match(idRegex)?.[0] || url;
       
-      // Use typed storage to get wiki page data
-      let data = await sessionStorage.getWikiPageData(url);
-
-      // If no data or data is outdated, fetch it
-      if (!data.title || 
-          !data.sections || 
-          !data.metadata?.timestamp ||
-          Date.now() - data.metadata.timestamp >= 1000 * 60 * 60) {
-        
-        const title = decodeURIComponent(new URL(url).pathname.replace("/wiki/", ""));
-        const fetched = await fetchAllData(title, url);
-        if (fetched) {
-          // Get the fresh data
-          data = await sessionStorage.getWikiPageData(url);
+      try {
+        let data = await sessionStorage.getWikiPageData(url);
+        // If no data or data is outdated, fetch it
+        if (!data.title || 
+            !data.sections || 
+            !data.metadata?.timestamp ||
+            Date.now() - data.metadata.timestamp >= 1000 * 60 * 60) {
+          
+          const title = decodeURIComponent(new URL(url).pathname.replace("/wiki/", ""));
+          const fetched = await fetchAllData(title, url);
+          if (!fetched) {
+            sendResponse({"error": "Failed to fetch Wikipedia page data"})
+            return;
+          }
+          if (fetched) { 
+            // Get the fresh data
+            data = await sessionStorage.getWikiPageData(url);
+          }
         }
-      }
 
-      // Format the response data (ensure all fields are defined)
-      const formattedData: ResponseData = {
-        title: data.title || "",
-        summary: data.summary || {},
-        sections: data.sections || [],
-        metadata: data.metadata || { timestamp: 0, url: "", title: "" }
-      };
-      
-      sendResponse(formattedData);
+        const formattedData: ResponseData = {
+          title: data.title || "",
+          summary: data.summary || {},
+          sections: data.sections || [],
+          metadata: data.metadata || { timestamp: 0, url: "", title: "" }
+        };
+        
+        sendResponse(formattedData);
+      } catch (error) {
+        console.error("Error fetching wiki page data:", error);
+        sendResponse({"error": "Error fetching Wikipedia page data"}) 
+      }
     },
     getQuizContent: async (payload, sendResponse): Promise<boolean> => {
-      // error handling for LLM mistakes; if adding token system for users refund their tokens in case of error
-      function checkQuizContent(quizContent: types.QuizContent, expectedQuestions: number): boolean {
-        if (!quizContent || !Array.isArray((quizContent as any).questions)) {
+      try {
+        function checkQuizContent(quizContent: types.QuizContent, expectedQuestions: number): boolean {
+        if (!quizContent || !('questions' in quizContent) || !Array.isArray(quizContent.questions)) {
           sendResponse({
-            reply: `Model returned no questions. Expected ${expectedQuestions}. Try again or adjust settings.`
+            reply: `Model returned no questions. Try again or adjust settings.`
           });
           return false;
         }
         const received = (quizContent as any).questions.length;
         if (received !== expectedQuestions) {
           sendResponse({
-            reply: `Expected ${expectedQuestions} questions but received ${received}. Please try again.`
+            reply: `Model returned incorrect number of questions. Please try again.`
           });
           return false;
         }
@@ -114,7 +138,7 @@ export default defineBackground(() => {
           if (issues.length > 0) {
             console.log("Invalid question detected", { index: idx, question });
             sendResponse({
-              reply: `Invalid question at #${idx + 1}: ${issues.join(", ")}. Please try again.`
+              reply: `Model generated an invalid question. Please try again.`
             });
             return false;
           }
@@ -123,7 +147,6 @@ export default defineBackground(() => {
       }
       const { topic, bucket_a, url } = payload;
       
-      // Get settings from storage using typed storage
       const settings = await getUserSettings();
       const numQuestions = settings.numQuestions;
       
@@ -214,36 +237,57 @@ export default defineBackground(() => {
         }
       }
       return false;
+      } catch (error) {
+        console.error("Error in getQuizContent:", error);
+        sendResponse({"reply": "Error generating quiz content. Please try again."})
+        return false;
+      }
     },
     toggleSidebar: (payload, sendResponse): void => {
+
       toggleSidebar(payload).then((enabled) => {
         console.log("enabled", enabled);
         sendResponse({"sidebarEnabled": enabled})
       })
+        .catch((error) => {
+          console.error("Error toggling sidebar:", error);
+          sendResponse({"error": "Error toggling sidebar"})
+        })
     },
     getSidebarState: (payload, sendResponse): void => {
       getSidebarState(payload).then((enabled) => {
         sendResponse({"sidebarEnabled": enabled})
       })
+        .catch((error) => {
+          console.error("Error getting sidebar state:", error);
+          sendResponse({"error": "Error getting sidebar state"})
+        })
     },
     toggleSettings: async (payload, sendResponse): Promise<void> => {
       const { questionDifficulty, numQuestions } = payload;
       console.log("toggleSettings", questionDifficulty, numQuestions);
-      
-      // Use typed storage for settings
-      await updateUserSettings({
-        questionDifficulty: questionDifficulty,
-        numQuestions: numQuestions
-      });
-      
-      sendResponse({"success": true})
+      try {
+        await updateUserSettings({
+          questionDifficulty: questionDifficulty,
+          numQuestions: numQuestions
+        });
+        sendResponse({"success": true})
+      } catch (error) {
+        console.error("Error updating user settings:", error);
+        sendResponse({"error": "Error updating user settings"})
+      }
     },
     getSettings: async (payload, sendResponse): Promise<void> => {
+      try {
       const settings = await getUserSettings();
       sendResponse({
         "questionDifficulty": settings.questionDifficulty, 
         "numQuestions": settings.numQuestions
       })
+    } catch (error) {
+      console.error("Error getting user settings:", error);
+      sendResponse({"error": "Error getting user settings; Using default settings values"})
+    }
     }
   }
 
@@ -259,14 +303,20 @@ export default defineBackground(() => {
     sender: Browser.runtime.MessageSender,
     sendResponse: (response?: ResponseData) => void
   ) => {
-    const handler = handlers[message.type]
-    if (handler) {
-      const typedHandler = handler as Handler<PayloadMap[typeof message.type]>
-      typedHandler(message.payload, sendResponse)
-      return true;
-    } else {
-      sendResponse({"reply": "This isn't a valid command"})
-      return false
+    try {
+      const handler = handlers[message.type]
+      if (handler) {
+        const typedHandler = handler as Handler<PayloadMap[typeof message.type]>
+        typedHandler(message.payload, sendResponse)
+        return true;
+      } else {
+        sendResponse({"error": "Invalid message type"})
+        return false
+      }
+    } catch (error) {
+      console.error("Error handling message:", error);
+      sendResponse({"error": "Error processing request"})
+      return false;
     }
   });
 
@@ -311,9 +361,6 @@ export default defineBackground(() => {
   const requestQueue: RequestQueue = {};
   const MIN_REQUEST_INTERVAL = 1000; 
 
-
-
-  // TODO: Use utils functions to send section/summary to Cohere
   const sendAIChat = async (content: Record<number, string>, type: "section" | "summary", topic: string, sectionTitle?: string): Promise<types.QuizContent | null> => {
     function formatBucket(sentences: Record<number, string>) {
       return Object.entries(sentences)
@@ -321,43 +368,74 @@ export default defineBackground(() => {
         .join('\n');
     }
 
-    // Get settings from storage using typed storage
-    const settings = await getUserSettings();
+    let settings;
+    try {
+      settings = await getUserSettings();
+    } catch (error) {
+      console.error("Error getting user settings:", error);
+      throw new Error("Failed to get user settings");
+    }
+    
     const questionDifficulty = settings.questionDifficulty;
     const numQuestions = settings.numQuestions;
 
-    // consider using: https://docs.boundaryml.com/guide/installation-language/typescript for json verification for gemini
-    // use generateQuiz for general testing
-    // Add settings (question variabvility and difficulty)
     const prompt = type === "section" 
       ? (questionDifficulty === "easy" ? prompts.USER_SECTION : questionDifficulty === "medium" ? prompts.USER_SECTION_COMPLEX : prompts.USER_SECTION_EXTREME)
       : (questionDifficulty === "easy" ? prompts.USER_SUMMARY : questionDifficulty === "medium" ? prompts.USER_SUMMARY_COMPLEX : prompts.USER_SUMMARY_EXTREME);
     
-    const quizContent: any = type === "section" ? 
-    await generateQuizGemini(prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
-      TOPIC: topic,
-      BUCKET_A: formatBucket(content)
-            }), prompts.fillPrompt(prompt, {
+    let quizContent: any; // Typing (check google AI library for types)
+    
+    try {
+      const system = prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
         NUM_QUESTIONS: numQuestions.toString(),
-        TOPIC: topic,
-        SECTION_TITLE: sectionTitle || ""}))
-       :
-      await generateQuizGemini(prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
         TOPIC: topic,
         BUCKET_A: formatBucket(content)
-      }), prompts.fillPrompt(prompt, {
-        NUM_QUESTIONS: numQuestions.toString(),
-        TOPIC: topic}))
+      });
+      const user = type === "section"
+        ? prompts.fillPrompt(prompt, {
+            NUM_QUESTIONS: numQuestions.toString(),
+            TOPIC: topic,
+            SECTION_TITLE: sectionTitle || ""
+          })
+        : prompts.fillPrompt(prompt, {
+            NUM_QUESTIONS: numQuestions.toString(),
+            TOPIC: topic
+          });
 
-    if (!quizContent || !quizContent.candidates || !quizContent.candidates[0] || !quizContent.candidates[0].content) {
-      console.error("Invalid quiz content structure:", quizContent);
-      throw new Error("Model returned an empty response. Please try again or lower difficulty.");
+      // Try OpenAI first
+      try {
+        const openAiOptions =
+          questionDifficulty === "hard"
+            ? { model: "gpt-4.1", temperature: 0.3875, max_output_tokens: 2850 }
+            : questionDifficulty === "medium"
+              ? { model: "gpt-4o-mini", temperature: 0.335, max_output_tokens: 2350 }
+              : { model: "gpt-4o-mini", temperature: 0.30, max_output_tokens: 1650 };
+        quizContent = await generateQuizOpenAI(system, user, openAiOptions);
+      } catch (openAiErr: any) {
+        console.warn("OpenAI generation failed, falling back to Gemini:", openAiErr?.message || String(openAiErr));
+        // Fallback to Gemini
+        quizContent = await generateQuizGemini(system, user);
+      }
+    } catch (error: any) {
+      console.error("Error during quiz generation (both providers):", error);
+      throw new Error(`Quiz generation failed: ${error?.message || String(error)}`);
     }
 
-    const responseText = quizContent.candidates[0].content.parts[0].text;
+    console.log("quizContent", quizContent);
+
+    let responseText: string | undefined;
+    if (quizContent?.choices?.[0]?.message?.content) {
+      responseText = quizContent.choices[0].message.content;
+    }
+    if (!responseText && quizContent?.candidates?.[0]?.content?.parts?.[0]?.text) {
+      responseText = quizContent.candidates[0].content.parts[0].text;
+    }
+    if (!responseText || typeof responseText !== "string") {
+      console.error("Invalid or empty AI response structure:", quizContent);
+      throw new Error("Model returned no content. Check proxy logs or try again later.");
+    }
     console.log("Raw response text:", responseText);
     
-    // jsonrepair | consider switcing to gpt for better json return
     let response: types.QuizContent;
     try {
       response = JSON.parse(jsonrepair(responseText)) as types.QuizContent;
@@ -368,11 +446,10 @@ export default defineBackground(() => {
     }
 
     if (!response || !response.questions || !Array.isArray(response.questions)) {
-      console.error("Invalid response structure or too few tokens");
+      console.warn("Invalid response structure or too few tokens");
       throw new Error("Model returned invalid quiz structure. Please retry.");
     }
     
-    // sanitize fields and coerce answer safely
     response.questions = response.questions.map((q: any) => {
       const coercedAnswer = typeof q?.answer === "number" ? q.answer : parseInt(String(q?.answer ?? ""), 10);
       return {
@@ -388,71 +465,109 @@ export default defineBackground(() => {
   }
 
   const toggleSidebar = async (payload: "local" | "session") => {
+    try {
     const result = await browser.storage[payload].get("sidebarEnabled");
-    const currentState: boolean = result.sidebarEnabled ?? false; // Default to false if undefined
+    const currentState: boolean = result["sidebarEnabled"] ?? false; // Default to false if undefined
     const newState = !currentState;
     await browser.storage[payload].set({sidebarEnabled: newState});
     console.log(`Sidebar toggled: ${currentState} -> ${newState}`);
     return newState;
+  } catch (error) {
+    console.error("Error in while toggling sidebar:", error);
+    return false;
+  }
   }
 
   const getSidebarState = async (payload: "local" | "session") => {
+    try {
     const result = await browser.storage[payload].get("sidebarEnabled");
-    const currentState: boolean = result.sidebarEnabled ?? false; // Default to false if undefined
+    const currentState: boolean = result["sidebarEnabled"] ?? false; // Default to false if undefined
     console.log(`Sidebar state retrieved: ${currentState}`);
     return currentState;
+  } catch (error) {
+    console.error("Error in while getting sidebar state:", error);
+    return false;
+  }
   }
 
   const makeWikipediaRequest = async (url: string) => {
+    const maxRetries = 2; 
+    const baseDelayMs = 250;
     const now = Date.now();
-    
-    Object.keys(requestQueue).forEach(key => {
-      if (now - requestQueue[key].timestamp > 60000) { 
-        delete requestQueue[key];
-      }
-    });
 
-    const lastRequest = Object.values(requestQueue).reduce((latest, current) => 
+    try {
+      if (requestQueue) {
+        Object.keys(requestQueue).forEach(key => {
+          const entry = requestQueue[key];
+          if (entry && typeof entry.timestamp === 'number' && now - entry.timestamp > 60000) {
+            delete requestQueue[key];
+          }
+        });
+      }
+    } catch (error) {
+      console.warn("Error cleaning request queue:", error);
+    }
+
+    const lastRequest = Object.values(requestQueue).reduce((latest, current) =>
       current.timestamp > latest ? current.timestamp : latest, 0);
-    
     if (now - lastRequest < MIN_REQUEST_INTERVAL) {
       await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL - (now - lastRequest)));
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const attemptTime = Date.now();
+      const requestId = `${url}_${attemptTime}_${attempt}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      try {
+        requestQueue[requestId] = { timestamp: attemptTime };
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'WikiChromeAI/1.0 (https://github.com/BostonCelticFanCoder/WikiChromeAI) Chrome Extension',
+            'Api-User-Agent': 'WikiChromeAI/1.0 (https://github.com/BostonCelticFanCoder/WikiChromeAI)'
+          }
+        });
 
-    try {
-      const requestId = `${url}_${now}`;
-      requestQueue[requestId] = {
-        timestamp: now
-      };
-
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'WikiChromeAI/1.0 (https://github.com/BostonCelticFanCoder/WikiChromeAI; yinmaksim@gmail.com) Chrome Extension',
-          'Api-User-Agent': 'WikiChromeAI/1.0 (https://github.com/BostonCelticFanCoder/WikiChromeAI; yinmaksim@gmail.com)'
+        if (response.status >= 400 && response.status < 500) {
+          return response;
         }
-      });
-      clearTimeout(timeoutId);
-      return response;
-    } finally {
-      clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          if (attempt === maxRetries) return response;
+          await new Promise(res => setTimeout(res, baseDelayMs * Math.pow(2, attempt)));
+          continue;
+        }
+
+        return response; 
+      } catch (error) {
+        if (attempt === maxRetries) throw error;
+        await new Promise(res => setTimeout(res, baseDelayMs * Math.pow(2, attempt)));
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
+
+    throw new Error('Wikipedia request failed after retries');
   };
 
   
   
-
-  // create a general function to convert html to text and then text to sentences for summary change from extract to section=0; then clean up frontend
   const getSectionContent = async (topic: string, section_index: number, pageUrl: string): Promise<[string, string] | string> => {
     try {
       pageUrl = pageUrl.match(idRegex)?.[0] || pageUrl;
       console.log("pageUrl", pageUrl);
-      const storageKeys = [`sections_${pageUrl}`];
-      const sectionsData = await browser.storage.session.get(storageKeys);
-      const sections: WikiSection[] = sectionsData[`sections_${pageUrl}`] || [];
+      
+      let sections: WikiSection[] = [];
+      try {
+        const storageKeys = [`sections_${pageUrl}`];
+        const sectionsData = await browser.storage.session.get(storageKeys);
+        sections = sectionsData[`sections_${pageUrl}`] || [];
+      } catch (error) {
+        console.error("Error reading sections from storage:", error);
+        return `Failed to retrieve section data from storage`;
+      }
+      
       console.log("sections", sections);
       
       const currentSection = sections.find((s: WikiSection) => Number(s.index) === Number(section_index));
@@ -468,66 +583,95 @@ export default defineBackground(() => {
         return `Wikipedia API request failed with status ${sectionHTML.status} for section ${section_index}.`;
       }
 
-      const sectionHTMLData: Section_Api_Response = await sectionHTML.json();
+      let sectionHTMLData: Section_Api_Response;
+      try {
+        sectionHTMLData = await sectionHTML.json();
+      } catch (error) {
+        console.error("Error parsing section HTML response:", error);
+        return `Failed to parse Wikipedia API response`;
+      }
+      
       if (!sectionHTMLData.parse?.text["*"]) {
         return `Invalid response from Wikipedia API: missing section html.`;
       }
 
-      const sectionText = convert(sectionHTMLData.parse.text["*"], {
-        wordwrap: false,
-        preserveNewlines: true,
-        selectors: SELECTORS
-      });
-      
-      let cleanText = sectionText
-        .replace(/\[edit.*?\]/g, '')
-        .replace(/\[\d+\]/g, '')
-        .replace(/\[a\]/g, '')
-        .replace(/\[\/wiki\/.*?\]/g, '')
-        .replace(/\[\/\/upload\.wikimedia\.org\/.*?\]/g, '')
-        .replace(/\[https?:\/\/.*?\]/g, '')
-        .replace(/\d+\.\s*\^.*?(?=\d+\.\s*\^|$)/gs, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+      let cleanText: string;
+      try {
+        const sectionText = convert(sectionHTMLData.parse.text["*"], {
+          wordwrap: false,
+          preserveNewlines: true,
+          selectors: SELECTORS
+        });
+        
+        cleanText = sectionText
+          .replace(/\[edit.*?\]/g, '')
+          .replace(/\[\d+\]/g, '')
+          .replace(/\[a\]/g, '')
+          .replace(/\[\/wiki\/.*?\]/g, '')
+          .replace(/\[\/\/upload\.wikimedia\.org\/.*?\]/g, '')
+          .replace(/\[https?:\/\/.*?\]/g, '')
+          .replace(/\d+\.\s*\^.*?(?=\d+\.\s*\^|$)/gs, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      } catch (error) {
+        console.error("Error converting section HTML to text:", error);
+        return `Failed to process section content`;
+      }
 
       if (currentSection && Array.isArray(sections)) {
-        let subsections: {index: number, line: string}[] = [];
-        let i = section_index;
+        try {
+          let subsections: {index: number, line: string}[] = [];
+          let i = section_index;
+          while (
+            i < sections.length &&
+            typeof sections[i] !== "undefined" &&
+            typeof sections[i - 1] !== "undefined" &&
+            (sections[i] as WikiSection).toclevel > currentSection.toclevel &&
+            (sections[i] as WikiSection).index > section_index &&
+            (sections[i - 1] as WikiSection).toclevel < (sections[i] as WikiSection).toclevel
+          ) {
+            subsections.push({
+              index: (sections[i] as WikiSection).index,
+              line: (sections[i] as WikiSection).line
+            });
+            i++;
+          }
 
-        while (i < sections.length && sections[i] && sections[i-1] && 
-               sections[i].toclevel > currentSection.toclevel && 
-               sections[i].index > section_index && 
-               sections[i - 1].toclevel < sections[i].toclevel) {
-          subsections.push(sections[i]);
-          i++;
-        }
-
-        if (subsections.length > 0) {
-          const firstSubsection = subsections[0];
-          const subsectionTitle = firstSubsection.line;
-          console.log(firstSubsection, subsectionTitle)
-          if (subsectionTitle) {
-            // Use regex without word boundaries since subsection titles may not have clear boundaries
-            const escapedTitle = subsectionTitle.replace(/[()]/g, '\\$&').replace(/[–—-]/g, '[–—-]').replace(/\s+/g, '\\s+');
-            const regex = new RegExp(escapedTitle, 'mi');
-            console.log('Searching for subsection:', subsectionTitle);
-            console.log('Using regex:', regex);
-            
-            const match = cleanText.search(regex);
-            console.log('Match found at position:', match);
-            if (match !== -1) {
-              // Cut text right before the subsection title
-              cleanText = cleanText.substring(0, match).trim();
-              console.log('Text cut to length:', cleanText.length);
+          if (subsections.length > 0 && typeof subsections[0] !== "undefined") {
+            const firstSubsection = subsections[0];
+            const subsectionTitle = firstSubsection?.line;
+            console.log(firstSubsection, subsectionTitle);
+            if (subsectionTitle) {
+              // Use regex without word boundaries since subsection titles may not have clear boundaries
+              const escapedTitle = subsectionTitle.replace(/[()]/g, '\\$&').replace(/[–—-]/g, '[–—-]').replace(/\s+/g, '\\s+');
+              const regex = new RegExp(escapedTitle, 'mi');
+              console.log('Searching for subsection:', subsectionTitle);
+              console.log('Using regex:', regex);
+              
+              const match = cleanText.search(regex);
+              console.log('Match found at position:', match);
+              if (match !== -1) {
+                // Cut text right before the subsection title
+                cleanText = cleanText.substring(0, match).trim();
+                console.log('Text cut to length:', cleanText.length);
+              }
             }
           }
+        } catch (error) {
+          console.error("Error processing subsections:", error);
+          // Continue with full text if subsection processing fails
         }
       }
 
-
-      if (currentSection.line) {
-        const sectionTitleRegex = new RegExp(`${currentSection.line.toUpperCase()}\\b`, 'g');
-        cleanText = cleanText.replace(sectionTitleRegex, '').trim();
+      try {
+        if (currentSection.line) {
+          const escaped = currentSection.line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const sectionTitleRegex = new RegExp(`${escaped}\\b`, 'gi');
+          cleanText = cleanText.replace(sectionTitleRegex, '').trim();
+        }
+      } catch (error) {
+        console.error("Error removing section title from text:", error);
+        // Continue with text as-is if title removal fails
       }
 
 
@@ -546,26 +690,30 @@ export default defineBackground(() => {
   };
 
   const handlePageUpdate = async (url: string) => {
-    const baseUrl = url.match(idRegex)?.[0] || url;
-
-    if (!baseUrl || baseUrl === lastProcessedUrl || isProcessing || url.includes("wikipedia.org/wiki/Main_Page")) {
-      return;
-    }
-
-    isProcessing = true;
     try {
-      lastProcessedUrl = baseUrl;
-      
-      const title = decodeURIComponent(new URL(baseUrl).pathname.replace("/wiki/", ""));
-      await fetchAllData(title, baseUrl);
-    } finally {
-      isProcessing = false;
+      const baseUrl = url.match(idRegex)?.[0] || url;
+
+      if (!baseUrl || baseUrl === lastProcessedUrl || isProcessing || url.includes("wikipedia.org/wiki/Main_Page")) {
+        return;
+      }
+
+      isProcessing = true;
+      try {
+        lastProcessedUrl = baseUrl;
+        
+        const title = decodeURIComponent(new URL(baseUrl).pathname.replace("/wiki/", ""));
+        await fetchAllData(title, baseUrl);
+      } catch (error) {
+        console.error("Error handling Wikipedia page update:", error);
+      } finally {
+        isProcessing = false;
+      }
+    } catch (error) {
+      console.error("Error processing page URL:", error);
     }
   }
 
   const fetchAllData = async (title: string, currentUrl: string) => {
-    // helper to check if section is meta section case insensitive
-    
     if (currentUrl.includes("wikipedia.org/wiki/Main_Page")) {
       return false;
     }
@@ -599,76 +747,95 @@ export default defineBackground(() => {
         return false;
       }
 
-
-      const [summaryData, sectionsData]: [any, SectionsData] = await Promise.all([
-        summaryResponse.json(),
-        sectionsResponse.json()
-      ]);
+      let summaryData: any;
+      let sectionsData: SectionsData;
+      try {
+        [summaryData, sectionsData] = await Promise.all([
+          summaryResponse.json(),
+          sectionsResponse.json()
+        ]);
+      } catch (error) {
+        console.error("Error parsing API response:", error);
+        return false;
+      }
 
       // Convert section=0 HTML to plain text and sentences object
       const summaryHtml: string | undefined = summaryData?.parse?.text?.["*"];
       let summaryPlainText = "";
       let summarySentences: Record<number, string> = {};
       if (summaryHtml) {
-        const converted = convert(summaryHtml, {
-          wordwrap: false,
-          preserveNewlines: true,
-          selectors: SELECTORS
-        });
-        summaryPlainText = converted
-          .replace(/\[edit.*?\]/g, '')
-          .replace(/\[\d+\]/g, '')
-          .replace(/\[a\]/g, '')
-          .replace(/\[\/wiki\/.*?\]/g, '')
-          .replace(/\[\/\/upload\.wikimedia\.org\/.*?\]/g, '')
-          .replace(/\[https?:\/\/.*?\]/g, '')
-          .replace(/\d+\.\s*\^.*?(?=\d+\.\s*\^|$)/gs, '')
-          .replace(/\s+/g, ' ')
-          .trim();
+        try {
+          const converted = convert(summaryHtml, {
+            wordwrap: false,
+            preserveNewlines: true,
+            selectors: SELECTORS
+          });
+          summaryPlainText = converted
+            .replace(/\[edit.*?\]/g, '')
+            .replace(/\[\d+\]/g, '')
+            .replace(/\[a\]/g, '')
+            .replace(/\[\/wiki\/.*?\]/g, '')
+            .replace(/\[\/\/upload\.wikimedia\.org\/.*?\]/g, '')
+            .replace(/\[https?:\/\/.*?\]/g, '')
+            .replace(/\d+\.\s*\^.*?(?=\d+\.\s*\^|$)/gs, '')
+            .replace(/\s+/g, ' ')
+            .trim();
 
-        const sentences = summaryPlainText.match(
-          /(?=[^])(?:\P{Sentence_Terminal}|\p{Sentence_Terminal}(?!['"`\p{Close_Punctuation}\p{Final_Punctuation}\s]))*(?:\p{Sentence_Terminal}+['"`\p{Close_Punctuation}\p{Final_Punctuation}]*|$)/gu
-        ) || (summaryPlainText ? [summaryPlainText] : []);
-        sentences.forEach((sentence: string, idx: number) => {
-          const trimmed = sentence.trim();
-          if (trimmed) {
-            summarySentences[idx + 1] = trimmed;
-          }
-        });
-        // make sure there are at least 7 sentences
-
+          const sentences = summaryPlainText.match(
+            /(?=[^])(?:\P{Sentence_Terminal}|\p{Sentence_Terminal}(?!['"`\p{Close_Punctuation}\p{Final_Punctuation}\s]))*(?:\p{Sentence_Terminal}+['"`\p{Close_Punctuation}\p{Final_Punctuation}]*|$)/gu
+          ) || (summaryPlainText ? [summaryPlainText] : []);
+          sentences.forEach((sentence: string, idx: number) => {
+            const trimmed = sentence.trim();
+            if (trimmed) {
+              summarySentences[idx + 1] = trimmed;
+            }
+          });
+        } catch (error) {
+          console.error("Error converting summary HTML to text:", error);
+          // Continue with empty summary if conversion fails
+        }
       }
       let sections = sectionsData.parse?.sections || [];
 
-      // remove tags from section lines
-      sections.forEach((section: WikiSection) => {
-        section.line = section.line.replace(/<[^>]*>?/g, '').trim();
-      });
+      try {
+        // remove tags from section lines
+        sections.forEach((section: WikiSection) => {
+          section.line = section.line.replace(/<[^>]*>?/g, '').trim();
+        });
 
-      // Remove sections that are meta sections and remove 2nd+ instance of a duplicate section.line
-      const seenSectionLines = new Set<string>();
-      sections = sections.filter((section: WikiSection) => {
-        if (isMetaSection(section.line)) return false;
-        if (seenSectionLines.has(section.line)) return false;
-        seenSectionLines.add(section.line);
-        return true;
-      });
+        // Remove sections that are meta sections and remove 2nd+ instance of a duplicate section.line
+        const seenSectionLines = new Set<string>();
+        sections = sections.filter((section: WikiSection) => {
+          if (isMetaSection(section.line)) return false;
+          if (seenSectionLines.has(section.line)) return false;
+          seenSectionLines.add(section.line);
+          return true;
+        });
+      } catch (error) {
+        console.error("Error processing sections:", error);
+        // Continue with unprocessed sections if filtering fails
+      }
       
       const parsedTitle = summaryData?.parse?.title ?? title;
       
       const timeStamp = Date.now();
       // Use typed storage to set wiki page data
-      await sessionStorage.setWikiPageData(currentUrl, {
-        title: parsedTitle,
-        summary: summarySentences,
-        sections: sections,
-        metadata: {
-          timestamp: timeStamp,
-          url: currentUrl,
-          title: parsedTitle
-        }
-      });
-      return true;
+      try {
+        await sessionStorage.setWikiPageData(currentUrl, {
+          title: parsedTitle,
+          summary: summarySentences,
+          sections: sections,
+          metadata: {
+            timestamp: timeStamp,
+            url: currentUrl,
+            title: parsedTitle
+          }
+        });
+        return true;
+      } catch (error) {
+        console.error("Error saving wiki page data to storage:", error);
+        return false;
+      }
 
     } catch (error) {
       console.error('Error fetching wiki data:', error);
@@ -677,22 +844,31 @@ export default defineBackground(() => {
   };
 
   browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    // Only process when the page is fully loaded and has a URL
-    if (changeInfo.status === "complete" && tab.url?.includes("wikipedia.org/wiki/")) {
-      const url = tab.url.match(idRegex)?.[0] || tab.url;
-      console.log("onUpdated", url);
-      handlePageUpdate(url);
+    try {
+      // Only process when the page is fully loaded and has a URL
+      if (changeInfo.status === "complete" && tab.url?.includes("wikipedia.org/wiki/")) {
+        const url = tab.url.match(idRegex)?.[0] || tab.url;
+        console.log("onUpdated", url);
+        handlePageUpdate(url);
+      }
+    } catch (error) {
+      console.warn("Error in tab update listener:", error);
     }
   });
 
   browser.tabs.onActivated.addListener(async (activeInfo) => {  
+    try {
     const tab = await browser.tabs.get(activeInfo.tabId);
     if (tab.url?.includes("wikipedia.org/wiki/")) {
       const url = tab.url.match(idRegex)?.[0] || tab.url;
       console.log("onActivated", url);
       handlePageUpdate(url);
     }
+  } catch (error) {
+    console.warn("Error while getting active tab:", error);
+  }
   });
+
 
   
 

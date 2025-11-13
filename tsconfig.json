@@ -3,6 +3,13 @@
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
-    "noImplicitAny": true
+    "noImplicitAny": true,
+    "strict": true,
+        "useUnknownInCatchVariables": true,
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": true,
+        "noImplicitOverride": true,
+        "noFallthroughCasesInSwitch": true,
+        "noPropertyAccessFromIndexSignature": true
   }
 }

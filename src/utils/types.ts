@@ -1,12 +1,12 @@
 export type QuizContent = {
-    questions: [{
+    questions: Array<{
       question: string;
       options: [string, string, string, string];
       answer: 0 | 1 | 2 | 3;
       citation: string;
       difficulty: "easy" | "medium" | "hard" | "extreme";
       explanation: string;
-    }]
+    }>
   }
 
 // Browser Storage Types
@@ -54,7 +54,7 @@ export type StorageValue<K extends StorageKey> = StorageSchema[K];
 
 // Helper types for specific storage areas
 export interface SessionStorageData extends Partial<StorageSchema> {}
-export interface LocalStorageData extends Partial<Pick<StorageSchema, 'sidebarEnabled'>> {}
+export interface LocalStorageData extends Partial<Pick<StorageSchema, 'sidebarEnabled' | 'questionDifficulty' | 'numQuestions'>> {}
 
 // Type-safe storage wrapper interface
 export interface TypedBrowserStorage {
@@ -83,5 +83,7 @@ export const createStorageKeys = (url: string) => ({
   sections: `sections_${url}` as const,
   metadata: `metadata_${url}` as const,
 });
+
+
 
 export type WikiPageKeys = ReturnType<typeof createStorageKeys>;

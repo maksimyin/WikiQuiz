@@ -116,61 +116,10 @@ export const isMetaSection = (title: string) => {
 }
 
 
-export const schema = {
-  type: "object",
-  properties: {
-    questions: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          question: {
-            type: "string",
-            description: "The quiz question text",
-            minLength: 1
-          },
-          options: {
-            type: "array",
-            items: {
-              type: "string",
-              description: "A possible answer option",
-              minLength: 1
-            },
-            minItems: 4,
-            maxItems: 4,
-            description: "Array of exactly 4 answer choices"
-          },
-          answer: {
-            type: "integer",
-            minimum: 0,
-            maximum: 3,
-            description: "Index of the correct answer (0-3)"
-          },
-          citation: {
-            type: "string",
-            description: "Source citation for the question",
-            minLength: 1
-          },
-          difficulty: {
-            type: "string",
-            enum: ["easy", "medium", "hard", "extreme"],
-            description: "Difficulty level of the question"
-          },
-          explanation: {
-            type: "string",
-            description: "Explanation of why the answer is correct",
-            minLength: 1
-          }
-        },
-        required: ["question", "options", "answer", "citation", "difficulty", "explanation"],
-        additionalProperties: false
-      },
-      minItems: 1,
-      maxItems: 1,
-      description: "Array containing exactly 1 quiz question"
-    }
-  },
-  required: ["questions"],
-  additionalProperties: false,
-  description: "Schema for quiz data structure with single question and answers"
-}
+
+
+// Proxy configuration for server-side API key protection
+// Configure via Vite env vars for beta builds: VITE_PROXY_URL, VITE_PROXY_TOKEN, VITE_FEEDBACK_URL
+export const PROXY_URL = import.meta.env['VITE_PROXY_URL'];
+export const PROXY_TOKEN = import.meta.env['VITE_PROXY_TOKEN'];
+export const FEEDBACK_URL = import.meta.env['VITE_FEEDBACK_URL'];
