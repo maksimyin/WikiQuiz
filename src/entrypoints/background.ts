@@ -869,8 +869,66 @@ export default defineBackground(() => {
   }
   });
 
-
+  const PROXY_URL = import.meta.env['VITE_PROXY_URL'];
   
+  async function keepProxyWarm() {
+    if (!PROXY_URL) {
+      console.log('No proxy url set');
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${PROXY_URL}/health`, { 
+        method: 'GET',
+        signal: AbortSignal.timeout(10000) 
+      });
+      
+      if (response.ok) {
+        console.log('[Keep-alive] Pinged proxy successfully');
+      } else {
+        console.warn('[Keep-alive] Proxy responded with status:', response.status);
+      }
+    } catch (error) {
+      console.log('[Keep-alive] Proxy ping failed');
+    }
+  }
+
+  if (browser.alarms) {
+    try {
+      browser.alarms.create('keepProxyWarm', { 
+        periodInMinutes: 10 
+      });
+
+      browser.alarms.onAlarm.addListener((alarm) => {
+        if (alarm.name === 'keepProxyWarm') {
+          keepProxyWarm();
+        }
+      });
+      
+      console.log('[Keep-alive] Periodic ping scheduled (every 10 minutes)');
+    } catch (error) {
+      console.warn('[Keep-alive] Failed to set up alarms:', error);
+    }
+  } else {
+    console.log('[Keep-alive] Alarms API not available');
+  }
+
+  keepProxyWarm();
+
+  browser.runtime.onInstalled.addListener(async (details) => {
+    if (details.reason === 'install') {
+      console.log('Installation complete - now pinging proxy server');
+      await keepProxyWarm();
+    } else if (details.reason === 'update') {
+      console.log('Extension updated - now pinging proxy server');
+      await keepProxyWarm();
+    }
+  });
+
+  browser.runtime.onStartup.addListener(async () => {
+    console.log('Browser started - now pinging proxy server');
+    await keepProxyWarm();
+  });
 
 });
 

@@ -5,7 +5,7 @@ export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   srcDir: "src",
   manifest: {
-    permissions: ["scripting", "storage"],
+    permissions: ["scripting", "storage", "alarms"],
     host_permissions: ["*://*.wikipedia.org/wiki/*"],
   },
 });
