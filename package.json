@@ -1,6 +1,6 @@
 {
   "name": "WikiQuiz - AI Study Tool",
-  "description": "A chrome extension powered by AI to help you study general knowledge and specific Wikipedia article sections",
+  "description": "Transform any Wikipedia article into an interactive quiz with AI in seconds",
   "private": true,
   "version": "1.0.1",
   "type": "module",
