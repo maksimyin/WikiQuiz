@@ -4,10 +4,7 @@ const BREAKPOINT_PX = 780;
 const STYLE_ID = 'wiki-ai-page-styles';
 
 const getStyleSheet = () => {
-  console.log('Current viewport width:', window.innerWidth);
-  
   return `
-    /* Minimal styles for the floating sidebar container */
     wxt-root {
       position: fixed !important;
       top: 0 !important;
@@ -15,16 +12,14 @@ const getStyleSheet = () => {
       height: 100vh !important;
       width: 100vw !important;
       z-index: 2147483647 !important;
-      pointer-events: none !important; /* Allow clicks to pass through */
+      pointer-events: none !important;
       isolation: isolate !important;
     }
 
-    /* Only allow pointer events on our actual UI elements */
     wxt-root * {
       pointer-events: auto !important;
     }
 
-    /* Default: shift page content when sidebar is open (larger screens) */
     body.wiki-ai-sidebar-open {
       padding-right: ${SIDEBAR_WIDTH_PX}px !important;
       transition: padding-right 0.3s ease !important;
@@ -32,7 +27,6 @@ const getStyleSheet = () => {
       margin-right: 0 !important;
     }
 
-    /* Smaller screens: reduce sidebar width and page shift */
     @media (max-width: ${BREAKPOINT_PX}px) {
       body.wiki-ai-sidebar-open {
         padding-right: ${SIDEBAR_WIDTH_SMALL_PX}px !important;
@@ -41,7 +35,6 @@ const getStyleSheet = () => {
   `;
 };
 
-// Store the update function globally for cleanup
 let globalUpdateStyles: (() => void) | null = null;
 
 export function injectPageStyles() {
@@ -53,12 +46,10 @@ export function injectPageStyles() {
   }
   styleEl.textContent = getStyleSheet();
   
-  // Clean up any existing listener
   if (globalUpdateStyles) {
     window.removeEventListener('resize', globalUpdateStyles);
   }
   
-  // Create new update function
   globalUpdateStyles = () => {
     styleEl!.textContent = getStyleSheet();
   };
@@ -72,7 +63,6 @@ export function removePageStyles() {
     styleEl.remove();
   }
   
-  // Remove resize listener
   if (globalUpdateStyles) {
     window.removeEventListener('resize', globalUpdateStyles);
     globalUpdateStyles = null;

@@ -19,6 +19,7 @@ web-ext.config.ts
 .env.local
 .env.*
 !.env.example
+.vars.ts
 
 # Editor directories and files
 .vscode/*

@@ -7,7 +7,6 @@ import { browser } from 'wxt/browser';
 import type { ErrorInfo } from 'react';
 
 function SidebarFallback({ resetErrorBoundary }: { resetErrorBoundary: () => void }) {
-    // Style nicer
     return (
         <div style={{padding: '20px'}}>
             <h1>Sidebar Error</h1>

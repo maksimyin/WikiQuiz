@@ -1,8 +1,8 @@
 {
   "name": "WikiQuiz - AI Study Tool",
-  "description": "Transform any Wikipedia article into an interactive quiz with AI in seconds",
+  "description": "Generate content-specific quizzes from any Wikipedia article",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",

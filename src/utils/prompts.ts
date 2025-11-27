@@ -1,4 +1,3 @@
-// foucs on better pormpt engineering to get better questions and better difficulty
 export const GENERATE_CONTEXT_PROMPT = `
 
 `;
@@ -25,7 +24,6 @@ Topic: {TOPIC}
 {BUCKET_A}
 `;
 
-//////// Summary Prompts ////////
 
 export const USER_SUMMARY = `
  Produce exactly {NUM_QUESTIONS} EASY or MEDIUM multiple-choice questions that test recall and straightforward understanding of the passage.
@@ -66,9 +64,6 @@ Explanations:
 
 Return ONLY the JSON.
 `;
-
-//////// Section Prompts ////////
-// Edit prompt to NOT incorporate line numbers
 
 export const USER_SECTION = `
  Produce exactly {NUM_QUESTIONS} EASY or MEDIUM multiple-choice questions that test recall and straightforward understanding of the following section.
@@ -176,7 +171,6 @@ Rules:
 Output (compact):
 Return ONLY JSON
 `
-// sepcify json format, tets to see how many credits are saved. If negligible, shorten this prompt or just stick with original method
 
 export const CONTENT_REDUCER_PROMPT = `
 

@@ -3,9 +3,6 @@ import './App.css';
 import { browser } from 'wxt/browser';
 import { PROXY_URL, FEEDBACK_URL } from '../../utils/constants';
 
-// update so changes here affect sidebar states too
-// update text and styles
-
 function App() {
   const [health, setHealth] = useState<'unknown' | 'ok' | 'error'>('unknown');
   const [checkingHealth, setCheckingHealth] = useState(false);

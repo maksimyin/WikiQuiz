@@ -38,7 +38,6 @@ const Sidebar = () => {
     }
   }, [isCollapsed]);
 
-  // Function to handle user clicking the toggle button
   const handleToggleClick = async () => {
     try {
     const result: {sidebarEnabled?: boolean, error?: string} = await browser.runtime.sendMessage({ type: 'toggleSidebar', payload: 'session' });
@@ -50,14 +49,13 @@ const Sidebar = () => {
     setIsCollapsed(!result.sidebarEnabled);
     } catch (error) {
       console.error("Failed to toggle sidebar:", error);
-      // Falback
       setIsCollapsed(prev => !prev);
     }
   };
   type QuizMode = {
     quizGeneration: boolean;
     quizType: "general_knowledge" | "text_specific" | undefined;
-    clickedElement: string | undefined; // summary, section-0, section-1, etc.
+    clickedElement: string | undefined; 
     section_index: number | undefined;
   }
   const [quizMode, setQuizMode] = useState<QuizMode>({
@@ -124,7 +122,7 @@ const Sidebar = () => {
       return;
     }
 
-      data.sections && setSections(data.sections); // need to add logic removing unnecessary sections like referebcesm works cited, further reading, external links (can be configured to be shown in settings)
+      data.sections && setSections(data.sections);
       data.title && setTitle(data.title);
       data.summary && setSummary(data.summary);
       if (!data.sections && !data.title && !data.summary) {
@@ -193,12 +191,9 @@ const Sidebar = () => {
         try {
         setQuizContent(null);
         setError(null);
-        // reset scroll to top
         const scrollToTop = () => {
           if (sidebarContentElement) {
             sidebarContentElement.scrollTop = 0;
-          } else {
-            console.log('Could not find sidebar content element - element is null');
           }
         };
         
@@ -221,7 +216,6 @@ const Sidebar = () => {
         if (!isActive || 
             currentQuizMode.clickedElement !== quizMode.clickedElement ||
             currentQuizMode.quizType !== quizMode.quizType) {
-          console.log('Quiz request cancelled or superseded by new request');
           return;
         }
         
@@ -229,7 +223,6 @@ const Sidebar = () => {
           if (!isActive) {
             return;
           }
-          console.log(quizContent.reply);
           setQuizContent(null);
           setError(quizContent.reply);
         } else {
@@ -264,7 +257,6 @@ const Sidebar = () => {
         onClick={handleToggleClick}
         title={isCollapsed ? "Open Sidebar" : "Close Sidebar"}
       >
-        {/* need to add icon here*/}
         {isCollapsed ? (
           <img src={sidebarIcon} alt="Open sidebar" style={{ width: '35px', height: '35px' }} />
         ) : (
@@ -294,14 +286,14 @@ const Sidebar = () => {
   const goNext = () => {
     if (currentQuestionIndex < (totalQuestions - 1)) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
-      setIsViewingArticle(false); // Re-blur article when moving to next question
+      setIsViewingArticle(false); 
     }
   };
 
   const goPrev = () => {
     if (currentQuestionIndex > 0) {
       setCurrentQuestionIndex(currentQuestionIndex - 1);
-      setIsViewingArticle(false); // Re-blur article when moving to previous question
+      setIsViewingArticle(false); 
     }
   };
 
@@ -342,11 +334,6 @@ const Sidebar = () => {
     }
   };
 
-  // separating sections by subsections
-  // [{section}, {section}, {section}, {section}] -> [{...main_section, subsections: [{section}, {section}, {section}]}]
-    // 0, 1, 2, 1, 0 ,1, 2, 2, 2, 3, 2, 1, 0 -> [{...main_section, subsections: [{...section, subsections: [{section}]}, {section}]}]... etc
-
-
   interface SectionWithSubsections extends WikiSection {
     subsections: SectionWithSubsections[];
     numberedPath: string; 
@@ -368,7 +355,6 @@ const Sidebar = () => {
         const sectionEnd = nextMainIndex === -1 ? sections.length : nextMainIndex;
         const childSections = sections.slice(sections.indexOf(mainSection) + 1, sectionEnd);
         
-        // Main section numbering: "Section 1", "Section 2", etc.
         const numberedPath = `Section ${mainIndex + 1}`;
         
         return {
@@ -399,7 +385,6 @@ const Sidebar = () => {
         const sectionEnd = nextSectionIndex === -1 ? sections.length : nextSectionIndex;
         const childSections = sections.slice(sections.indexOf(section) + 1, sectionEnd);
         
-        // Subsection numbering: "2.1", "2.1.1", etc.
         const numberedPath = `${parentPath}.${index + 1}`;
 
         return {
@@ -413,7 +398,9 @@ const Sidebar = () => {
       return [];
     }
   };
+
   const nestedSections = createNestedSections(sections);
+
   const renderSections = (sections: SectionWithSubsections[]) => {
     try {
       if (!Array.isArray(sections) || sections.length === 0) {
@@ -502,19 +489,8 @@ const Sidebar = () => {
     }
   };
 
-  
-  
-
-  // need to add two buttons to the sidebar: one to toggle dark mode and one to toggle sidebar visibility
-  // add functionality to toggle dark mode and sidebar visibility
-  // later, consider adding feature to shrink and expand sidebar (hard to implement bc/ of shadow dom)
-  // work on sidebar styles
-    //before production make cleaner especially left hand bar
-
-  // Tomorrow: save quizContent to local storage and load it from local storage
   return (
     <>
-      {/* Floating toggle button */}
       <button 
         className={`sidebar-toggle-button ${isCollapsed ? 'collapsed' : 'expanded'} ${quizMode.quizGeneration ? 'quiz-active' : ''}`}
         onClick={handleToggleClick}
@@ -534,10 +510,8 @@ const Sidebar = () => {
         </div>
       </button>
 
-      {/* Dim backdrop during quiz; consider adding unblur animation*/}
       {quizMode.quizGeneration && !isCollapsed && !showResults && !isViewingArticle && <div className="sidebar-backdrop" />}
 
-      {/* Main sidebar content */}
       <div className={`sidebar-container ${isCollapsed ? 'collapsed' : 'expanded'} ${quizMode.quizGeneration ? 'quiz-active' : ''}`}>
         {quizMode.quizGeneration ? (
           <>
@@ -575,7 +549,6 @@ const Sidebar = () => {
             setError(null); 
           }}/>
         </header>
-        {/* Quiz content body */}
         <div className="sidebar-content">
           {error ? (
             <div className="quiz-error">
@@ -673,7 +646,6 @@ const Sidebar = () => {
                     <button 
                       className="end-quiz-button exit"
                       onClick={() => {
-                        //save quiz content to local storage
                         setQuizMode({
                           quizGeneration: false,
                           quizType: undefined,
@@ -689,7 +661,6 @@ const Sidebar = () => {
                   </div>
                 </div> 
                 ) : (
-                /* Quiz */
                 <>
                   <div className="quiz-progress">
                     <div className="quiz-progress-bar">
@@ -775,7 +746,6 @@ const Sidebar = () => {
       <>
             <header className="sidebar-header">
         <h1 className="sidebar-title">{title || "Untitled"}</h1>
-        {/* Settings; TODO = save setting to local storage; edit prompts and code to utilize settings */}
         <div className="settings-container" ref={settingsRef}>
           <IoMdSettings 
             className="sidebar-settings-icon" 

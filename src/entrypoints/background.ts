@@ -9,7 +9,15 @@ import { sessionStorage, getUserSettings, updateUserSettings } from '../utils/st
 import {jsonrepair} from 'jsonrepair'
 
 export default defineBackground(() => {
+  self.addEventListener('error', (event) => {
+    console.error('[Background] Uncaught error:', event.error ?? event.message);
+    event.preventDefault(); 
+  });
 
+  self.addEventListener('unhandledrejection', (event) => {
+    console.error('[Background] Unhandled promise rejection:', event.reason);
+    event.preventDefault(); 
+  });
 
   type PayloadMap =  {
     initialization: undefined,
@@ -73,7 +81,6 @@ export default defineBackground(() => {
       
       try {
         let data = await sessionStorage.getWikiPageData(url);
-        // If no data or data is outdated, fetch it
         if (!data.title || 
             !data.sections || 
             !data.metadata?.timestamp ||
@@ -86,7 +93,6 @@ export default defineBackground(() => {
             return;
           }
           if (fetched) { 
-            // Get the fresh data
             data = await sessionStorage.getWikiPageData(url);
           }
         }
@@ -136,7 +142,7 @@ export default defineBackground(() => {
           const validAnswer = Number.isInteger(question?.answer) && question.answer >= 0 && question.answer <= 3;
           if (!validAnswer) issues.push("answer must be an integer index 0-3 corresponding to options A-D");
           if (issues.length > 0) {
-            console.log("Invalid question detected", { index: idx, question });
+            console.error("Invalid question detected:", { index: idx, issues: issues.join(", ") });
             sendResponse({
               reply: `Model generated an invalid question. Please try again.`
             });
@@ -150,7 +156,6 @@ export default defineBackground(() => {
       const settings = await getUserSettings();
       const numQuestions = settings.numQuestions;
       
-      console.log("bucket_a", bucket_a);
       if (typeof(bucket_a) === "number") {
         let sectionContent = await getSectionContent(topic, bucket_a, url);
         if (typeof(sectionContent) === "string") {
@@ -167,7 +172,6 @@ export default defineBackground(() => {
         sentences.forEach((sentence, idx) => {
           section_chopped[idx + 1] = sentence.trim();
         });
-        console.log("section_chopped", section_chopped);
         if (Object.keys(section_chopped).length < 7) {
           sendResponse({"reply": `Not enough content in section "${sectionTitle}" to generate a quiz`})
           return false;
@@ -180,7 +184,6 @@ export default defineBackground(() => {
           sendResponse({ reply: `Quiz generation failed: ${err?.message || String(err)}` });
           return false;
         }
-        console.log("quizContent", quizContent);
         if (!quizContent) {
           sendResponse({ reply: "Quiz generation returned empty result. Please retry." })
           return false;
@@ -189,7 +192,6 @@ export default defineBackground(() => {
           return false;
         }
         try {
-          console.log("sent quizContent", quizContent);
           sendResponse({"reply": quizContent})
           return true;
         } catch (error) {
@@ -200,7 +202,6 @@ export default defineBackground(() => {
 
       } else if (typeof(bucket_a) === "object") {
         const summaryContent = bucket_a
-        console.log("summaryContent", summaryContent);
         if (summaryContent) {
           const summaryCount = Object.keys(summaryContent).length;
           if (summaryCount < 7) {
@@ -223,7 +224,6 @@ export default defineBackground(() => {
             return false;
           }
           try {
-            console.log("sent quizContent", quizContent);
             sendResponse({"reply": quizContent})
             return true;
           } catch (error) {
@@ -244,9 +244,7 @@ export default defineBackground(() => {
       }
     },
     toggleSidebar: (payload, sendResponse): void => {
-
       toggleSidebar(payload).then((enabled) => {
-        console.log("enabled", enabled);
         sendResponse({"sidebarEnabled": enabled})
       })
         .catch((error) => {
@@ -265,7 +263,6 @@ export default defineBackground(() => {
     },
     toggleSettings: async (payload, sendResponse): Promise<void> => {
       const { questionDifficulty, numQuestions } = payload;
-      console.log("toggleSettings", questionDifficulty, numQuestions);
       try {
         await updateUserSettings({
           questionDifficulty: questionDifficulty,
@@ -383,7 +380,7 @@ export default defineBackground(() => {
       ? (questionDifficulty === "easy" ? prompts.USER_SECTION : questionDifficulty === "medium" ? prompts.USER_SECTION_COMPLEX : prompts.USER_SECTION_EXTREME)
       : (questionDifficulty === "easy" ? prompts.USER_SUMMARY : questionDifficulty === "medium" ? prompts.USER_SUMMARY_COMPLEX : prompts.USER_SUMMARY_EXTREME);
     
-    let quizContent: any; // Typing (check google AI library for types)
+    let quizContent: any; 
     
     try {
       const system = prompts.fillPrompt(prompts.SYSTEM_PROMPT_ARTICLE_SPECIFIC, {
@@ -402,7 +399,6 @@ export default defineBackground(() => {
             TOPIC: topic
           });
 
-      // Try OpenAI first
       try {
         const openAiOptions =
           questionDifficulty === "hard"
@@ -413,7 +409,6 @@ export default defineBackground(() => {
         quizContent = await generateQuizOpenAI(system, user, openAiOptions);
       } catch (openAiErr: any) {
         console.warn("OpenAI generation failed, falling back to Gemini:", openAiErr?.message || String(openAiErr));
-        // Fallback to Gemini
         quizContent = await generateQuizGemini(system, user);
       }
     } catch (error: any) {
@@ -421,7 +416,6 @@ export default defineBackground(() => {
       throw new Error(`Quiz generation failed: ${error?.message || String(error)}`);
     }
 
-    console.log("quizContent", quizContent);
 
     let responseText: string | undefined;
     if (quizContent?.choices?.[0]?.message?.content) {
@@ -434,12 +428,10 @@ export default defineBackground(() => {
       console.error("Invalid or empty AI response structure:", quizContent);
       throw new Error("Model returned no content. Check proxy logs or try again later.");
     }
-    console.log("Raw response text:", responseText);
     
     let response: types.QuizContent;
     try {
       response = JSON.parse(jsonrepair(responseText)) as types.QuizContent;
-      console.log("Repaired response:", response);
     } catch (error: any) {
       console.error("Error in jsonrepair:", error);
       throw new Error(`Failed to parse model JSON output: ${error?.message || String(error)}`);
@@ -467,10 +459,9 @@ export default defineBackground(() => {
   const toggleSidebar = async (payload: "local" | "session") => {
     try {
     const result = await browser.storage[payload].get("sidebarEnabled");
-    const currentState: boolean = result["sidebarEnabled"] ?? false; // Default to false if undefined
+    const currentState: boolean = result["sidebarEnabled"] ?? false;
     const newState = !currentState;
     await browser.storage[payload].set({sidebarEnabled: newState});
-    console.log(`Sidebar toggled: ${currentState} -> ${newState}`);
     return newState;
   } catch (error) {
     console.error("Error in while toggling sidebar:", error);
@@ -481,8 +472,7 @@ export default defineBackground(() => {
   const getSidebarState = async (payload: "local" | "session") => {
     try {
     const result = await browser.storage[payload].get("sidebarEnabled");
-    const currentState: boolean = result["sidebarEnabled"] ?? false; // Default to false if undefined
-    console.log(`Sidebar state retrieved: ${currentState}`);
+    const currentState: boolean = result["sidebarEnabled"] ?? false; 
     return currentState;
   } catch (error) {
     console.error("Error in while getting sidebar state:", error);
@@ -556,7 +546,6 @@ export default defineBackground(() => {
   const getSectionContent = async (topic: string, section_index: number, pageUrl: string): Promise<[string, string] | string> => {
     try {
       pageUrl = pageUrl.match(idRegex)?.[0] || pageUrl;
-      console.log("pageUrl", pageUrl);
       
       let sections: WikiSection[] = [];
       try {
@@ -568,7 +557,6 @@ export default defineBackground(() => {
         return `Failed to retrieve section data from storage`;
       }
       
-      console.log("sections", sections);
       
       const currentSection = sections.find((s: WikiSection) => Number(s.index) === Number(section_index));
       if (!currentSection) {
@@ -640,26 +628,19 @@ export default defineBackground(() => {
           if (subsections.length > 0 && typeof subsections[0] !== "undefined") {
             const firstSubsection = subsections[0];
             const subsectionTitle = firstSubsection?.line;
-            console.log(firstSubsection, subsectionTitle);
             if (subsectionTitle) {
-              // Use regex without word boundaries since subsection titles may not have clear boundaries
               const escapedTitle = subsectionTitle.replace(/[()]/g, '\\$&').replace(/[–—-]/g, '[–—-]').replace(/\s+/g, '\\s+');
               const regex = new RegExp(escapedTitle, 'mi');
-              console.log('Searching for subsection:', subsectionTitle);
-              console.log('Using regex:', regex);
+
               
               const match = cleanText.search(regex);
-              console.log('Match found at position:', match);
               if (match !== -1) {
-                // Cut text right before the subsection title
                 cleanText = cleanText.substring(0, match).trim();
-                console.log('Text cut to length:', cleanText.length);
               }
             }
           }
         } catch (error) {
           console.error("Error processing subsections:", error);
-          // Continue with full text if subsection processing fails
         }
       }
 
@@ -671,7 +652,6 @@ export default defineBackground(() => {
         }
       } catch (error) {
         console.error("Error removing section title from text:", error);
-        // Continue with text as-is if title removal fails
       }
 
 
@@ -719,7 +699,6 @@ export default defineBackground(() => {
     }
     currentUrl = currentUrl.match(idRegex)?.[0] || currentUrl;
     try {
-      // Check existing data using typed storage
       const existingData = await sessionStorage.getWikiPageData(currentUrl);
       
 
@@ -727,7 +706,6 @@ export default defineBackground(() => {
           existingData.sections && 
           existingData.metadata?.timestamp && 
           Date.now() - existingData.metadata.timestamp < 1000 * 60 * 60) {
-          console.log("data = fresh");
         return true;
       }
 
@@ -759,7 +737,6 @@ export default defineBackground(() => {
         return false;
       }
 
-      // Convert section=0 HTML to plain text and sentences object
       const summaryHtml: string | undefined = summaryData?.parse?.text?.["*"];
       let summaryPlainText = "";
       let summarySentences: Record<number, string> = {};
@@ -792,18 +769,15 @@ export default defineBackground(() => {
           });
         } catch (error) {
           console.error("Error converting summary HTML to text:", error);
-          // Continue with empty summary if conversion fails
         }
       }
       let sections = sectionsData.parse?.sections || [];
 
       try {
-        // remove tags from section lines
         sections.forEach((section: WikiSection) => {
           section.line = section.line.replace(/<[^>]*>?/g, '').trim();
         });
 
-        // Remove sections that are meta sections and remove 2nd+ instance of a duplicate section.line
         const seenSectionLines = new Set<string>();
         sections = sections.filter((section: WikiSection) => {
           if (isMetaSection(section.line)) return false;
@@ -813,13 +787,11 @@ export default defineBackground(() => {
         });
       } catch (error) {
         console.error("Error processing sections:", error);
-        // Continue with unprocessed sections if filtering fails
       }
       
       const parsedTitle = summaryData?.parse?.title ?? title;
       
       const timeStamp = Date.now();
-      // Use typed storage to set wiki page data
       try {
         await sessionStorage.setWikiPageData(currentUrl, {
           title: parsedTitle,
@@ -845,10 +817,8 @@ export default defineBackground(() => {
 
   browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     try {
-      // Only process when the page is fully loaded and has a URL
       if (changeInfo.status === "complete" && tab.url?.includes("wikipedia.org/wiki/")) {
         const url = tab.url.match(idRegex)?.[0] || tab.url;
-        console.log("onUpdated", url);
         handlePageUpdate(url);
       }
     } catch (error) {
@@ -861,7 +831,6 @@ export default defineBackground(() => {
     const tab = await browser.tabs.get(activeInfo.tabId);
     if (tab.url?.includes("wikipedia.org/wiki/")) {
       const url = tab.url.match(idRegex)?.[0] || tab.url;
-      console.log("onActivated", url);
       handlePageUpdate(url);
     }
   } catch (error) {
@@ -873,7 +842,6 @@ export default defineBackground(() => {
   
   async function keepProxyWarm() {
     if (!PROXY_URL) {
-      console.log('No proxy url set');
       return;
     }
     
@@ -883,13 +851,11 @@ export default defineBackground(() => {
         signal: AbortSignal.timeout(10000) 
       });
       
-      if (response.ok) {
-        console.log('[Keep-alive] Pinged proxy successfully');
-      } else {
+      if (!response.ok) {
         console.warn('[Keep-alive] Proxy responded with status:', response.status);
       }
     } catch (error) {
-      console.log('[Keep-alive] Proxy ping failed');
+      console.warn('[Keep-alive] Error checking proxy health:', error);
     }
   }
 
@@ -904,29 +870,20 @@ export default defineBackground(() => {
           keepProxyWarm();
         }
       });
-      
-      console.log('[Keep-alive] Periodic ping scheduled (every 10 minutes)');
     } catch (error) {
       console.warn('[Keep-alive] Failed to set up alarms:', error);
     }
-  } else {
-    console.log('[Keep-alive] Alarms API not available');
   }
 
   keepProxyWarm();
 
   browser.runtime.onInstalled.addListener(async (details) => {
-    if (details.reason === 'install') {
-      console.log('Installation complete - now pinging proxy server');
-      await keepProxyWarm();
-    } else if (details.reason === 'update') {
-      console.log('Extension updated - now pinging proxy server');
+    if (details.reason === 'install' || details.reason === 'update') {
       await keepProxyWarm();
     }
   });
 
   browser.runtime.onStartup.addListener(async () => {
-    console.log('Browser started - now pinging proxy server');
     await keepProxyWarm();
   });
 
