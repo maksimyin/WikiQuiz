@@ -46,8 +46,13 @@ I'm [Maksim Yin](https://github.com/maksimyin), a passionate high school program
 
 ## 📸 Screenshots
 
+<img width="1280" height="800" alt="Screenshot 1" src="https://github.com/user-attachments/assets/9cb02438-9828-41cc-a377-ad56c7644e60" />
 
+<img width="1280" height="800" alt="Screenshot 2" src="https://github.com/user-attachments/assets/3e6f6460-61e5-4313-8514-10e4ade75d84" />
 
+<img width="1280" height="800" alt="Screenshot 3" src="https://github.com/user-attachments/assets/390a5944-670a-4c3e-a6bf-1656462cdd2f" />
+
+<img width="1280" height="800" alt="Screenshot 4" src="https://github.com/user-attachments/assets/4aa29cec-7e55-4389-921a-56897a4b2ef8" />
 
 ## 🙏 Acknowledgments
 
