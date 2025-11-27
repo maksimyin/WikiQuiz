@@ -1,6 +1,6 @@
 # WikiQuiz - AI Study Tool
 
-> WikiQuiz is a Chrome extension that generates custom quizzes directly from any Wikipedia article. Choose a whole article or a specific section and instantly get targeted questions to help you learn faster and retain more.
+> WikiQuiz is a Chrome extension that generates custom quizzes directly from any Wikipedia article. Choose a whole article or a specific section and instantly get relevant questions to help you learn faster and retain more.
 
 
 ## 🌟 Why Wikiquiz
