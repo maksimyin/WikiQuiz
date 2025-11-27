@@ -22,7 +22,7 @@ export default function Loading({ message }: LoadingProps) {
     const hintTimer = setTimeout(() => {
       setShowColdStartHint(true);
       setLoadingMessage('Waking up server... This may take 20-30 seconds on first use.');
-    }, 16000);
+    }, 20000);
 
     return () => clearTimeout(hintTimer);
   }, []);

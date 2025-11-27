@@ -1,15 +1,15 @@
 # WikiQuiz - AI Study Tool
 
-> WikiQuiz is an AI-powered Chrome extension that generates custom quizzes from Wikipedia content whether from the article summary or specific sections.
+> WikiQuiz is a Chrome extension that generates custom quizzes directly from any Wikipedia article. Choose a whole article or a specific section and instantly get targeted questions to help you learn faster and retain more.
 
 
 ## 🌟 Why Wikiquiz
 
-Sure, copy-pasting text or screenshoting articles for ChatGPT to make AI quizzes is a great way to learn. But not everyone has the time or pacience for this long and not as effective process. Lots of times, the quizzes generated don't go into depth on the content you WANT. WikiQuiz fixes these issues by allowing users to generate on-demand quizzes directly on Wikipedia to maximize knowledge retention by getting content-specific quizzes, not just general questions on the topic.
+Studying from Wikipedia often means switching tabs, copying text, or relying on AI summaries. WikiQuiz removes this inconvenience by letting you create relevant quizzes directly on the page you're reading.
 
-- Create fast and in-depth quizzes on Wikipedia content
-- Focus on learninig exactly what you need by generating quizzes for individual topics, not just on the whole article
-- Utilizes GPT 40 mini for quick response times and 4.1 for complex questions
+- Generate fast, content-specific quizzes from any Wikipedia section
+- Target specific topics to learn rather than broad and surface-level questions
+- Powered by GPT-4o mini for speed and GPT-4.1 for longer, more complex questions
 - No more context switching or copy-pasting. Wikiquiz allows you to quiz yourself directly on Wikipedia
 - Detailed feedback on every question
 - Customizable difficulties and question numbers
@@ -37,13 +37,11 @@ Sure, copy-pasting text or screenshoting articles for ChatGPT to make AI quizzes
 ### How to use
 1. **Open** any Wikipedia article of your choice
 2. Click the floating **WikiQuiz icon** on the bottom right of the page
-3. **Hover over** and **Select** the Generate Quiz button on any section/introduction to quiz yourself
+3. **Hover over** and **select** the Generate Quiz button on any section/introduction to quiz yourself
 4. **Customize** difficulty and question count through settings
 
 ## ✍️ Author
-I'm [Maksim Yin](https://github.com/maksimyin), a high school student trying to bolster his portfolio of programming projects by creating useful tools. I am a passionate programmer and would love to share my study tool to make your learning more effecient and fun!
-
-If WikiQuiz helps you in any way, please consider sharing with friends or leaving feedback. 
+I'm [Maksim Yin](https://github.com/maksimyin), a passionate high school programmer building tools to make studying more effecient. If WikiQuiz helps you in any way, please consider sharing it or leaving feedback. 
 
 
 ## 📸 Screenshots

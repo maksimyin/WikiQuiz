@@ -31,7 +31,6 @@ export const WIKI_META_SECTION_TITLES: string[] = [
   ];
 
 export const SELECTORS = [
-    // Skip infoboxes, sidebars, navboxes, and ToC
     { selector: 'table.infobox', format: 'skip' },
     { selector: '.infobox', format: 'skip' },
     { selector: 'table.vertical-navbox', format: 'skip' },
@@ -42,7 +41,6 @@ export const SELECTORS = [
     { selector: '.navbox', format: 'skip' },
     { selector: '#toc', format: 'skip' },
     { selector: '.toc', format: 'skip' },
-    // General cleanups and misc templates
     { selector: '.mw-editsection', format: 'skip' },
     { selector: '.reference', format: 'skip' },
     { selector: '.error', format: 'skip' },
@@ -78,24 +76,21 @@ export const SELECTORS = [
 
 
 
-// Normalize titles for reliable comparison
 const normalizeTitle = (title: string): string =>
   title
     .toLowerCase()
-    .replace(/<[^>]*>?/g, '') // remove any residual tags
-    .replace(/\[[^\]]*\]/g, '') // remove bracketed edit markers if present
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ') // remove punctuation
-    .replace(/\s+/g, ' ') // collapse whitespace
+    .replace(/<[^>]*>?/g, '')
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 
 export const isMetaSection = (title: string) => {
   const normalized = normalizeTitle(title);
 
-  // Exact matches against normalized set
   const exactSet = new Set(WIKI_META_SECTION_TITLES.map(t => normalizeTitle(t)));
   if (exactSet.has(normalized)) return true;
 
-  // Keyword-based matching to catch variants/combinations
   const keywordFragments = [
     'reference',
     'footnote',
@@ -118,8 +113,6 @@ export const isMetaSection = (title: string) => {
 
 
 
-// Proxy configuration for server-side API key protection
-// Configure via Vite env vars for beta builds: VITE_PROXY_URL, VITE_PROXY_TOKEN, VITE_FEEDBACK_URL
 export const PROXY_URL = import.meta.env['VITE_PROXY_URL'];
 export const PROXY_TOKEN = import.meta.env['VITE_PROXY_TOKEN'];
 export const FEEDBACK_URL = import.meta.env['VITE_FEEDBACK_URL'];

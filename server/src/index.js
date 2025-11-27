@@ -17,13 +17,11 @@ const originOption = !corsEnv || corsEnv.trim() === "*"
 app.use(cors({ origin: originOption }));
 app.use(express.json({ limit: "1mb" }));
 
-// Basic request timeout for safety (30s)
 app.use((_req, res, next) => {
   res.setTimeout(30_000);
   next();
 });
 
-// Simple rate limiter for beta traffic
 const limiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
@@ -34,7 +32,6 @@ app.use(limiter);
 
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
-  // eslint-disable-next-line no-console
   console.warn(
     "GEMINI_API_KEY is not set. Set it in .env or environment variables."
   );
@@ -45,7 +42,6 @@ const genai = new GoogleGenAI({ apiKey });
 
 const gptApiKey = process.env.OPENAI_API_KEY;
 if (!gptApiKey) {
-  // eslint-disable-next-line no-console
   console.warn(
     "OPENAI_API_KEY is not set. Set it in .env or environment variables."
   );
@@ -95,7 +91,6 @@ app.post("/api/gemini/generate", async (req, res) => {
         responseMimeType,
       },
     });
-    // Log minimal metadata to avoid leaking prompt content
     console.log("[gemini] ok", {
       model,
       temperature,
@@ -143,7 +138,6 @@ app.post("/api/openai/generate", async (req, res) => {
         { role: "user", content: userPrompt },
       ],
     });
-    // Log minimal metadata to avoid leaking prompt content
     console.log("[openai] ok", {
       model,
       temperature,
@@ -159,8 +153,5 @@ app.post("/api/openai/generate", async (req, res) => {
 });
 
 app.listen(port, () => {
-  // eslint-disable-next-line no-console
   console.log(`Proxy listening on http://localhost:${port}`);
 });
-
-// https://render.com/docs/web-services

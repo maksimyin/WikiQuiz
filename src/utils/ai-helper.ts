@@ -1,7 +1,5 @@
-// After testing and development, may be relevant to test different models
 import { PROXY_URL, PROXY_TOKEN } from "./constants";
 
-// need to work on typing the LLM response
 export async function generateQuizGemini(systemPrompt: string, userPrompt: string): Promise<any> {
   try {
     const response = await fetch(`${PROXY_URL}/api/gemini/generate`, {
@@ -39,7 +37,6 @@ export async function generateQuizOpenAI(
   opts?: { model?: string; temperature?: number; max_output_tokens?: number }
 ): Promise<any> {
   try {
-    console.log(PROXY_URL, "systemPrompt", systemPrompt, "userPrompt", userPrompt);
     const response = await fetch(`${PROXY_URL}/api/openai/generate`, {
       method: "POST",
       headers: {
@@ -55,7 +52,6 @@ export async function generateQuizOpenAI(
         response_format: { type: "json_object" }
       })
     });
-    console.log(response);
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
@@ -69,5 +65,3 @@ export async function generateQuizOpenAI(
     throw (error instanceof Error) ? error : new Error(String(error));
   }
 }
-// need to split initial sentences into another prompt to summarize before passing into AI
-

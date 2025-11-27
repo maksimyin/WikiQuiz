@@ -9,7 +9,6 @@ export type QuizContent = {
     }>
   }
 
-// Browser Storage Types
 export interface WikiSection {
   anchor: string;
   fromtitle: string;
@@ -34,29 +33,23 @@ export interface UserSettings {
 
 
 
-// Complete storage schema
 export interface StorageSchema {
-  // User settings (persistent across sessions)
   questionDifficulty: "easy" | "medium" | "hard";
   numQuestions: 4 | 7;
   sidebarEnabled: boolean;
   
-  // Dynamic keys for wiki pages (URL-based)
   [key: `title_${string}`]: string;
   [key: `summary_${string}`]: Record<number, string>;
   [key: `sections_${string}`]: WikiSection[];
   [key: `metadata_${string}`]: StorageMetadata;
 }
 
-// Utility types for storage operations
 export type StorageKey = keyof StorageSchema;
 export type StorageValue<K extends StorageKey> = StorageSchema[K];
 
-// Helper types for specific storage areas
 export interface SessionStorageData extends Partial<StorageSchema> {}
 export interface LocalStorageData extends Partial<Pick<StorageSchema, 'sidebarEnabled' | 'questionDifficulty' | 'numQuestions'>> {}
 
-// Type-safe storage wrapper interface
 export interface TypedBrowserStorage {
   session: {
     get<K extends StorageKey>(keys: K[]): Promise<Pick<StorageSchema, K>>;
@@ -76,7 +69,6 @@ export interface TypedBrowserStorage {
   };
 }
 
-// Utility functions for generating storage keys
 export const createStorageKeys = (url: string) => ({
   title: `title_${url}` as const,
   summary: `summary_${url}` as const,

@@ -25,8 +25,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 );
 
 window.addEventListener('error', (e) => {
-  console.error('GlobalError', e.error ?? e.message);
+  console.error('[Popup] Uncaught error:', e.error ?? e.message);
+  e.preventDefault(); 
 });
 window.addEventListener('unhandledrejection', (e) => {
-  console.error('UnhandledRejection', e.reason);
+  console.error('[Popup] Unhandled promise rejection:', e.reason);
+  e.preventDefault(); 
 });

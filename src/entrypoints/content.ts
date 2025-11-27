@@ -17,9 +17,7 @@ export default defineContentScript({
 
 
 
-      // Listen for messages from background script
       browser.runtime.onMessage.addListener((message) => {
-        console.log("Content script received message:", message);
         window.dispatchEvent(new CustomEvent('wikiExtensionUpdate', { 
           detail: message 
         }));
@@ -27,10 +25,12 @@ export default defineContentScript({
       });
 
       window.addEventListener('error', (e) => {
-        console.error('GlobalError', e.error ?? e.message);
+        console.error('[Content] Uncaught error:', e.error ?? e.message);
+        e.preventDefault(); 
       });
       window.addEventListener('unhandledrejection', (e) => {
-        console.error('UnhandledRejection', e.reason);
+        console.error('[Content] Unhandled promise rejection:', e.reason);
+        e.preventDefault(); 
       });
     }
   });
