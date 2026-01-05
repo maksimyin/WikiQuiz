@@ -1,22 +1,75 @@
 import { BsFileEarmarkText } from 'react-icons/bs';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 type LoadingProps = {
   message?: string;
+  isComplete?: boolean;
 };
 
-export default function Loading({ message }: LoadingProps) {
-  const [seconds, setSeconds] = useState(0);
+export default function Loading({ message, isComplete = false }: LoadingProps) {
+  const [percentage, setPercentage] = useState(0);
   const [showColdStartHint, setShowColdStartHint] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('Studying the Wikipedia article and creating quiz...');
 
+  const maxProgressRef = useRef(0);
+  const startTimeRef = useRef(Date.now());
+
   useEffect(() => {
+    if (!isComplete) return;
+
+    const RAMP_DURATION = 250;
+    const RAMP_INTERVAL = 16;
+    const startProgress = maxProgressRef.current;
+    const targetProgress = 99;
+    const startTime = Date.now();
+
+    if (startProgress >= 98) {
+      maxProgressRef.current = 100;
+      setPercentage(100);
+      return;
+    }
+
+    const rampInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const t = Math.min(elapsed / RAMP_DURATION, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const current = startProgress + (targetProgress - startProgress) * eased;
+
+      maxProgressRef.current = current;
+      setPercentage(current);
+
+      if (t >= 1) {
+        clearInterval(rampInterval);
+        setTimeout(() => {
+          maxProgressRef.current = 100;
+          setPercentage(100);
+        }, 500);
+      }
+    }, RAMP_INTERVAL);
+
+    return () => clearInterval(rampInterval);
+  }, [isComplete]);
+
+
+  useEffect(() => {
+    if (isComplete) return;
+
+    const TARGET = 99;
+    const TAU = 5000; 
+
     const interval = setInterval(() => {
-      setSeconds(prev => prev + 1);
-    }, 1000);
+      const elapsed = Date.now() - startTimeRef.current;
+
+      const rawProgress = TARGET * (1 - Math.exp(-elapsed / TAU));
+
+      if (rawProgress > maxProgressRef.current) {
+        maxProgressRef.current = rawProgress;
+        setPercentage(rawProgress);
+      }
+    }, 50);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isComplete]);
 
   useEffect(() => {
     const hintTimer = setTimeout(() => {
@@ -26,12 +79,6 @@ export default function Loading({ message }: LoadingProps) {
 
     return () => clearTimeout(hintTimer);
   }, []);
-
-  const formatTime = (totalSeconds: number) => {
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    return mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
-  };
 
   return (
     <div className="loading-container">
@@ -82,7 +129,22 @@ export default function Loading({ message }: LoadingProps) {
         )}
 
         <div className="loading-timer">
-          {formatTime(seconds)}
+          <svg className="loading-timer-circle" viewBox="0 0 36 36">
+            <path
+              className="loading-timer-bg"
+              d="M18 2.0845
+                a 15.9155 15.9155 0 0 1 0 31.831
+                a 15.9155 15.9155 0 0 1 0 -31.831"
+            />
+            <path
+              className="loading-timer-progress"
+              strokeDasharray={`${percentage}, 100`}
+              d="M18 2.0845
+                a 15.9155 15.9155 0 0 1 0 31.831
+                a 15.9155 15.9155 0 0 1 0 -31.831"
+            />
+          </svg>
+          <span className="loading-timer-text">{Math.floor(percentage)}%</span>
         </div>
       </div>
     </div>

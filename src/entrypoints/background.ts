@@ -205,7 +205,7 @@ export default defineBackground(() => {
         if (summaryContent) {
           const summaryCount = Object.keys(summaryContent).length;
           if (summaryCount < 7) {
-            sendResponse({"reply": `Not enough content in Introduction (found ${summaryCount} sentences; need at least 7).`})
+            sendResponse({"reply": `Not enough content in Introduction to generate a quiz`})
             return false;
           }
           let quizContent: types.QuizContent | null = null;

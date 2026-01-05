@@ -19,6 +19,13 @@ CRITICAL JSON RULES:
 • There should only be one question per object.
 • Ensure all JSON syntax is correct - no missing commas, quotes, or brackets.
 
+OPTION LENGTH RULES (CRITICAL):
+• ALL 4 options MUST have similar word count (±2 words of each other).
+• Use identical grammatical structure across all options.
+• No option may contain "because", "which means", or extra qualifiers.
+• The correct answer must NOT be longer or more detailed than distractors.
+• Generate 3 distractors FIRST, then write the correct answer to match their length/style.
+
 Context:
 Topic: {TOPIC}
 {BUCKET_A}
@@ -26,21 +33,23 @@ Topic: {TOPIC}
 
 
 export const USER_SUMMARY = `
- Produce exactly {NUM_QUESTIONS} EASY or MEDIUM multiple-choice questions that test recall and straightforward understanding of the passage.
+Produce exactly {NUM_QUESTIONS} EASY or MEDIUM multiple-choice questions that test recall and straightforward understanding of the passage.
 
 Topic: {TOPIC}
 
 Question rules:
 • Difficulty must be "easy" or "medium" with more leaning towards medium.
 • Base each question on a single clearly stated fact; no synthesis needed.
-• Provide exactly 4 concise, plausible options; do not prefix with letters.
-• Follow the global JSON rules described by the system prompt.
- • Keep each question ≤ 20 words.
- • Keep each option ≤ 8 words.
- • Keep each explanation ≤ 25 words.
+• Keep each question ≤ 20 words.
+• Keep each explanation ≤ 25 words.
+
+Options (CRITICAL - no length bias):
+• All 4 options must be 4-8 words each, within ±2 words of each other.
+• Same grammatical structure; no explanatory clauses.
+• Write distractors first, then match correct answer to their length.
 
 Explanations:
-• "explanation" paraphrases the supporting idea without referencing line numbers in plain language.
+• "explanation" paraphrases the supporting idea without referencing line numbers.
 
 Return ONLY the JSON.
 `;
@@ -52,21 +61,23 @@ Topic: {TOPIC}
 
 Requirements:
 • Difficulty must be "medium" or "hard".
-• At least 2 questions must combine information from two or more distinct ideas in the passage.
+• At least 2 questions must combine information from two or more distinct ideas.
 • At least 1 question must use "NOT", "EXCEPT", or "LEAST".
 • Focus on cause-effect, comparisons, inference, or synthesis.
 
-Options:
-• Provide exactly 4 concise, plausible options; no letter prefixes.
+Options (CRITICAL - no length bias):
+• All 4 options must be similar length (±2 words of each other).
+• Same grammatical structure; no "because" or qualifying clauses.
+• Write distractors first, then match correct answer to their length/style.
 
 Explanations:
-• "explanation" paraphrases the supporting idea without referencing line numbers in plain language.
+• "explanation" paraphrases the reasoning without referencing line numbers.
 
 Return ONLY the JSON.
 `;
 
 export const USER_SECTION = `
- Produce exactly {NUM_QUESTIONS} EASY or MEDIUM multiple-choice questions that test recall and straightforward understanding of the following section.
+Produce exactly {NUM_QUESTIONS} EASY or MEDIUM multiple-choice questions that test recall and straightforward understanding of the following section.
 
 Topic: {TOPIC}
 Section: {SECTION_TITLE}
@@ -74,11 +85,14 @@ Section: {SECTION_TITLE}
 Question rules:
 • Difficulty must be "easy" or "medium" with more leaning towards medium.
 • Base each question on a single clearly stated fact; no synthesis needed.
-• Provide exactly 4 concise, plausible options; do not prefix with letters.
-• Follow the global JSON rules described by the system prompt.
+
+Options (CRITICAL - no length bias):
+• All 4 options must be 4-8 words each, within ±2 words of each other.
+• Same grammatical structure; no explanatory clauses.
+• Write distractors first, then match correct answer to their length.
 
 Explanations:
-• "explanation" paraphrases the supporting idea without referencing line numbers in plain language.
+• "explanation" paraphrases the supporting idea without referencing line numbers.
 
 Return ONLY the JSON.
 `;
@@ -89,18 +103,19 @@ Produce exactly {NUM_QUESTIONS} MEDIUM or HARD multiple-choice questions requiri
 Topic: {TOPIC}
 Section: {SECTION_TITLE}
 
-
 Requirements:
 • Difficulty must be "medium" or "hard".
-• At least 2 questions must combine information from two or more distinct ideas in the section.
+• At least 2 questions must combine information from two or more distinct ideas.
 • At least 1 question must use "NOT", "EXCEPT", or "LEAST".
 • Focus on cause-effect, comparisons, inference, or synthesis.
 
-Options:
-• Provide exactly 4 concise, plausible options; no letter prefixes.
+Options (CRITICAL - no length bias):
+• All 4 options must be similar length (±2 words of each other).
+• Same grammatical structure; no "because" or qualifying clauses.
+• Write distractors first, then match correct answer to their length/style.
 
 Explanations:
-• "explanation" summarises the reasoning in plain language without referencing line numbers.
+• "explanation" summarises the reasoning without referencing line numbers.
 
 Return ONLY the JSON.
 `;
@@ -115,14 +130,16 @@ Requirements:
 • ALL questions must synthesize information from multiple parts of the passage.
 • At least 2 questions must use "NOT", "EXCEPT", or "LEAST" format.
 • At least 1 question must require inference about unstated consequences or motivations.
-• Focus on complex cause-effect chains, contradictions, implicit relationships, and counter-intuitive insights.
+• Focus on complex cause-effect chains, contradictions, implicit relationships.
 
-Options:
-• Provide exactly 4 sophisticated, plausible options that require careful analysis to distinguish.
-• Distractors should be based on partial understanding or common misconceptions.
+Options (CRITICAL - no length bias):
+• All 4 options must be similar length (±2 words of each other).
+• Same grammatical structure; no extra qualifiers on the correct answer.
+• Write distractors first, then match correct answer to their length/style.
+• Distractors based on partial understanding or common misconceptions.
 
 Explanations:
-• "explanation" must detail the multi-step reasoning required to reach the answer without referencing line numbers.
+• "explanation" details the multi-step reasoning without referencing line numbers.
 
 Return ONLY the JSON.
 `;
@@ -138,14 +155,16 @@ Requirements:
 • ALL questions must synthesize information from multiple parts of the section.
 • At least 2 questions must use "NOT", "EXCEPT", or "LEAST" format.
 • At least 1 question must require inference about unstated consequences or motivations.
-• Focus on complex cause-effect chains, contradictions, implicit relationships, and counter-intuitive insights.
+• Focus on complex cause-effect chains, contradictions, implicit relationships.
 
-Options:
-• Provide exactly 4 sophisticated, plausible options that require careful analysis to distinguish.
-• Distractors should be based on partial understanding or common misconceptions.
+Options (CRITICAL - no length bias):
+• All 4 options must be similar length (±2 words of each other).
+• Same grammatical structure; no extra qualifiers on the correct answer.
+• Write distractors first, then match correct answer to their length/style.
+• Distractors based on partial understanding or common misconceptions.
 
 Explanations:
-• "explanation" must detail the multi-step reasoning required to reach the answer without referencing line numbers.
+• "explanation" details the multi-step reasoning without referencing line numbers.
 
 Return ONLY the JSON.
 `

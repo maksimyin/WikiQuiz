@@ -6,6 +6,19 @@ import { PROXY_URL, FEEDBACK_URL } from '../../utils/constants';
 function App() {
   const [health, setHealth] = useState<'unknown' | 'ok' | 'error'>('unknown');
   const [checkingHealth, setCheckingHealth] = useState(false);
+  const exampleArticles: string[] = [
+    'World_War_II',
+    'Roman_Empire',
+    'Black_hole',
+    'DNA',
+    'Artificial_intelligence',
+    'Industrial_Revolution',
+    'Renaissance',
+    'Solar_System',
+    'Social_media',
+    'Greek_mythology',
+    'United_States'
+  ];
 
 
 
@@ -23,21 +36,21 @@ function App() {
 
   return (
     <div className="popup-container">
-      <h2 className="popup-title">WikiQuiz - AI Study Tool</h2>
+      <h2 className="popup-title">WikiQuiz</h2>
 
       <div className="popup-section">
         <div className="label">How to use</div>
         <ul className="steps">
           <li>Open any Wikipedia article (not the Main Page).</li>
-          <li>Click the floating icon on the left to open the sidebar.</li>
-          <li>Hover a section title to reveal the Generate Quiz button.</li>
+          <li>Click the floating icon on the bottom right to open the sidebar.</li>
+          <li>Hover over a section title to reveal the Generate Quiz button.</li>
         </ul>
         <div className="row">
           <button
             className="btn secondary"
-            onClick={() => browser.tabs.create({ url: 'https://en.wikipedia.org/wiki/Special:Random' })}
+            onClick={() => browser.tabs.create({ url: `https://en.wikipedia.org/wiki/${exampleArticles[Math.floor(Math.random() * exampleArticles.length)]}` })}
           >
-            Try a Random Article
+            Try an Example
           </button>
         </div>
       </div>
