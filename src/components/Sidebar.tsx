@@ -17,6 +17,8 @@ const Sidebar = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [quizContent, setQuizContent] = useState<types.QuizContent | null>(null);
+  const [isQuizReady, setIsQuizReady] = useState(false); // Signals Loading to complete before showing quiz
+  const pendingQuizRef = useRef<types.QuizContent | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
   const [showResults, setShowResults] = useState(false);
@@ -29,7 +31,6 @@ const Sidebar = () => {
   const [isViewingArticle, setIsViewingArticle] = useState(false);
   const [sidebarContentElement, setSidebarContentElement] = useState<HTMLDivElement | null>(null);
   
-
   useEffect(() => {
     if (isCollapsed) {
       document.body.classList.remove('wiki-ai-sidebar-open');
@@ -190,6 +191,8 @@ const Sidebar = () => {
       if (quizMode.quizGeneration) {
         try {
         setQuizContent(null);
+        setIsQuizReady(false);
+        pendingQuizRef.current = null;
         setError(null);
         const scrollToTop = () => {
           if (sidebarContentElement) {
@@ -224,12 +227,15 @@ const Sidebar = () => {
             return;
           }
           setQuizContent(null);
+          setIsQuizReady(false);
+          pendingQuizRef.current = null;
           setError(quizContent.reply);
         } else {
           if (!isActive) {
             return;
           }
-          setQuizContent(quizContent.reply);
+          pendingQuizRef.current = quizContent.reply;
+          setIsQuizReady(true);
           setError(null); 
         }
         } catch (error) {
@@ -248,6 +254,19 @@ const Sidebar = () => {
       isActive = false;
     };
   }, [quizMode]);
+
+  // Transition effect: when quiz is ready, let Loading show 100%, then reveal quiz
+  useEffect(() => {
+    if (isQuizReady && pendingQuizRef.current) {
+      const timer = setTimeout(() => {
+        setQuizContent(pendingQuizRef.current);
+        pendingQuizRef.current = null;
+        setIsQuizReady(false);
+      }, 800); // 250ms ramp to 99% + 500ms hold at 99% + buffer
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isQuizReady]);
 
  
   if (isLoading) {
@@ -297,7 +316,11 @@ const Sidebar = () => {
     }
   };
 
-  const resetQuizView = () => {
+  const resetQuizView = (shouldShuffle: boolean = false) => {
+    if (shouldShuffle && quizContent) {
+      const shuffledQuestions = [...quizContent.questions].sort(() => Math.random() - 0.5);
+      setQuizContent({ ...quizContent, questions: shuffledQuestions });
+    }
     setCurrentQuestionIndex(0);
     setSelectedAnswers({});
     setShowResults(false);
@@ -638,13 +661,7 @@ const Sidebar = () => {
 
                   <div className="quiz-action-buttons">
                     <button 
-                      className="end-quiz-button restart" 
-                      onClick={resetQuizView}
-                    >
-                      Take Quiz Again
-                    </button>
-                    <button 
-                      className="end-quiz-button exit"
+                      className="quiz-nav-button quiz-nav-prev"
                       onClick={() => {
                         setQuizMode({
                           quizGeneration: false,
@@ -657,6 +674,12 @@ const Sidebar = () => {
                       }}
                     >
                       Return to Sidebar
+                    </button>
+                    <button 
+                      className="quiz-nav-button quiz-nav-next" 
+                      onClick={() => resetQuizView(true)}
+                    >
+                      Take Quiz Again
                     </button>
                   </div>
                 </div> 
@@ -676,7 +699,7 @@ const Sidebar = () => {
                       <button 
                         className="quiz-view-article-icon"
                         onClick={() => setIsViewingArticle(!isViewingArticle)}
-                        title={isViewingArticle ? 'Hide Article' : 'View Article'}
+                        title={isViewingArticle ? 'Hide Article' : 'Show Article'}
                       >
                         {isViewingArticle ? <HiOutlineEyeOff /> : <HiOutlineEye />}
                       </button>
@@ -719,26 +742,21 @@ const Sidebar = () => {
                           Previous
                         </button>
                         <button 
-                          className="quiz-nav-button quiz-nav-next" 
-                          onClick={goNext}
-                          disabled={currentQuestionIndex === totalQuestions - 1}
+                          className={`quiz-nav-button ${currentQuestionIndex === totalQuestions - 1 ? 'quiz-finish-button' : 'quiz-nav-next'}`} 
+                          onClick={currentQuestionIndex === totalQuestions - 1 ? handleFinishQuiz : goNext}
+                          disabled={selectedAnswers[currentQuestionIndex] === undefined}
                         >
-                          Next
+                          {currentQuestionIndex === totalQuestions - 1 ? 'Check Answers' : 'Next'}
                         </button>
                       </div>
 
-                      {currentQuestionIndex === totalQuestions - 1 && (
-                        <button className="quiz-finish-button" onClick={handleFinishQuiz}>
-                          Check Answers
-                        </button>
-                      )}
                     </div>
                   )}
                 </>
               )}
             </div>
           ) : (
-            <Loading />
+            <Loading isComplete={isQuizReady} />
           )}
         </div>
       </>
