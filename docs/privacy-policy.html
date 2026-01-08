@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - WikiQuiz</title>
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/maksimyin/WikiQuiz/main/public/icon/32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0f0f0f;
+      --bg-secondary: #1a1a1a;
+      --bg-card: #232323;
+      --text-primary: #f5f5f5;
+      --text-secondary: #a8a8a8;
+      --accent: #60a5fa;
+      --accent-hover: #93c5fd;
+      --border: #333;
+      --success: #4ade80;
+      --warning: #fbbf24;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 50%, #1a1a2e 100%);
+      padding: 4rem 2rem 3rem;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: radial-gradient(circle at 30% 20%, rgba(96, 165, 250, 0.1) 0%, transparent 50%),
+                  radial-gradient(circle at 70% 80%, rgba(139, 92, 246, 0.08) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 1;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .logo img {
+      width: 48px;
+      height: 48px;
+    }
+
+    .logo-text {
+      font-family: 'IBM Plex Serif', Georgia, serif;
+      font-size: 1.75rem;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    h1 {
+      font-family: 'IBM Plex Serif', Georgia, serif;
+      font-size: 2.5rem;
+      font-weight: 500;
+      margin-bottom: 0.75rem;
+      letter-spacing: -0.02em;
+    }
+
+    .last-updated {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 3rem 2rem 4rem;
+    }
+
+    .summary-card {
+      background: linear-gradient(135deg, rgba(74, 222, 128, 0.1) 0%, rgba(96, 165, 250, 0.05) 100%);
+      border: 1px solid rgba(74, 222, 128, 0.3);
+      border-radius: 12px;
+      padding: 1.5rem 2rem;
+      margin-bottom: 3rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+
+    .summary-icon {
+      font-size: 1.5rem;
+      flex-shrink: 0;
+    }
+
+    .summary-card p {
+      color: var(--text-primary);
+      font-size: 1.1rem;
+      font-weight: 500;
+    }
+
+    section {
+      margin-bottom: 2.5rem;
+    }
+
+    h2 {
+      font-family: 'IBM Plex Serif', Georgia, serif;
+      font-size: 1.5rem;
+      font-weight: 500;
+      margin-bottom: 1rem;
+      color: var(--text-primary);
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 1.5rem 0 0.75rem;
+      color: var(--text-primary);
+    }
+
+    p {
+      color: var(--text-secondary);
+      margin-bottom: 1rem;
+    }
+
+    ul, ol {
+      color: var(--text-secondary);
+      margin-left: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    li {
+      margin-bottom: 0.5rem;
+    }
+
+    .no-collect-list {
+      list-style: none;
+      margin-left: 0;
+    }
+
+    .no-collect-list li {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0;
+    }
+
+    .no-collect-list li::before {
+      content: '✗';
+      color: #ef4444;
+      font-weight: bold;
+    }
+
+    .info-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1rem 0;
+    }
+
+    .info-card h4 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--accent);
+    }
+
+    .info-card p, .info-card ul {
+      margin-bottom: 0;
+      font-size: 0.95rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.95rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 1rem;
+      border: 1px solid var(--border);
+    }
+
+    th {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    td {
+      color: var(--text-secondary);
+    }
+
+    td:first-child {
+      color: var(--accent);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    a:hover {
+      color: var(--accent-hover);
+      text-decoration: underline;
+    }
+
+    .third-party {
+      display: grid;
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+
+    .third-party-item {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+    }
+
+    .third-party-item h4 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--text-primary);
+    }
+
+    .third-party-item p {
+      font-size: 0.9rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .third-party-item a {
+      font-size: 0.85rem;
+    }
+
+    .contact-section {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .contact-section h2 {
+      border: none;
+      padding-bottom: 0;
+    }
+
+    .contact-links {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-top: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .contact-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      border-top: 1px solid var(--border);
+    }
+
+    footer a {
+      color: var(--text-secondary);
+    }
+
+    footer a:hover {
+      color: var(--accent);
+    }
+
+    @media (max-width: 640px) {
+      .hero {
+        padding: 3rem 1.5rem 2rem;
+      }
+
+      h1 {
+        font-size: 1.75rem;
+      }
+
+      .container {
+        padding: 2rem 1.5rem 3rem;
+      }
+
+      .summary-card {
+        flex-direction: column;
+        text-align: center;
+      }
+
+      table {
+        font-size: 0.85rem;
+      }
+
+      th, td {
+        padding: 0.75rem;
+      }
+
+      td:first-child {
+        white-space: normal;
+      }
+
+      .contact-links {
+        flex-direction: column;
+        gap: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-content">
+      <div class="logo">
+        <img src="https://raw.githubusercontent.com/maksimyin/WikiQuiz/main/public/icon/48.png" alt="WikiQuiz Logo">
+        <span class="logo-text">WikiQuiz</span>
+      </div>
+      <h1>Privacy Policy</h1>
+      <p class="last-updated">Last Updated: January 8, 2026</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="summary-card">
+      <span class="summary-icon">🛡️</span>
+      <p>WikiQuiz does not collect, store, or share any personal information. The extension operates locally on your browser with minimal data processing required solely to generate quizzes.</p>
+    </div>
+
+    <section>
+      <h2>Information We DO NOT Collect</h2>
+      <ul class="no-collect-list">
+        <li>Personal identification information (name, email, address)</li>
+        <li>Account credentials or login information</li>
+        <li>Browsing history or tracking data</li>
+        <li>Cookies for advertising or analytics</li>
+        <li>Location data</li>
+        <li>Financial information</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Information Processed Locally</h2>
+      <p>The following data is processed and stored <strong>locally on your device only</strong>:</p>
+      
+      <div class="info-card">
+        <h4>User Preferences</h4>
+        <ul>
+          <li>Quiz difficulty setting (easy, medium, hard)</li>
+          <li>Number of questions preference (4 or 7)</li>
+          <li>Sidebar visibility state</li>
+        </ul>
+        <p>This data is stored using Chrome's local storage API and never leaves your device.</p>
+      </div>
+
+      <div class="info-card">
+        <h4>Session Data</h4>
+        <ul>
+          <li>Wikipedia article content (title, sections, summaries) from pages you actively use the extension on</li>
+          <li>This data is stored temporarily in session storage and is automatically cleared when you close your browser</li>
+        </ul>
+      </div>
+    </section>
+
+    <section>
+      <h2>Information Sent to Our Server</h2>
+      <p>When you generate a quiz, the following is sent to our secure proxy server:</p>
+      <ul>
+        <li><strong>Wikipedia article content</strong> (text from the section you selected for quiz generation)</li>
+      </ul>
+      <p>This content is:</p>
+      <ul>
+        <li>Used solely to generate quiz questions via AI models</li>
+        <li>Processed in real-time and not stored permanently on our servers</li>
+        <li>Not associated with any personal identifiers</li>
+        <li>Not used for any purpose other than quiz generation</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Third-Party Services</h2>
+      <p>WikiQuiz uses the following third-party services to generate quizzes:</p>
+      
+      <div class="third-party">
+        <div class="third-party-item">
+          <h4>OpenAI API</h4>
+          <p>Used to generate quiz questions from Wikipedia content. No personal data is shared—only Wikipedia article text.</p>
+          <a href="https://openai.com/privacy/" target="_blank" rel="noopener">View OpenAI's Privacy Policy →</a>
+        </div>
+        
+        <div class="third-party-item">
+          <h4>Google Gemini API</h4>
+          <p>Used as a fallback for quiz generation. No personal data is shared—only Wikipedia article text.</p>
+          <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">View Google's Privacy Policy →</a>
+        </div>
+        
+        <div class="third-party-item">
+          <h4>Wikipedia API</h4>
+          <p>Used to fetch article content directly from Wikipedia. Requests are made directly from your browser.</p>
+          <a href="https://foundation.wikimedia.org/wiki/Privacy_policy" target="_blank" rel="noopener">View Wikimedia's Privacy Policy →</a>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Data Security</h2>
+      <p>We implement appropriate technical measures to protect information:</p>
+      <ul>
+        <li>All communication with our proxy server uses HTTPS encryption</li>
+        <li>Our server implements rate limiting to prevent abuse</li>
+        <li>No user data is logged or stored permanently on our servers</li>
+        <li>Session data is automatically cleared when you close your browser</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Data Retention</h2>
+      <ul>
+        <li><strong>Local preferences:</strong> Stored until you uninstall the extension or clear browser data</li>
+        <li><strong>Session data:</strong> Automatically cleared when you close your browser</li>
+        <li><strong>Server-side:</strong> No data is retained; content is processed and immediately discarded</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Your Rights and Choices</h2>
+      <p>You have full control over your data:</p>
+      <ul>
+        <li><strong>Clear local data:</strong> Remove all extension data by uninstalling WikiQuiz or clearing your browser's extension data</li>
+        <li><strong>Disable the extension:</strong> You can disable WikiQuiz at any time through Chrome's extension settings</li>
+        <li><strong>Modify preferences:</strong> Change your quiz settings at any time through the extension popup</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Children's Privacy</h2>
+      <p>WikiQuiz does not knowingly collect any personal information from children under 13 years of age. Since we do not collect personal information from any users, this extends to all age groups.</p>
+    </section>
+
+    <section>
+      <h2>Permissions Explained</h2>
+      <p>WikiQuiz requests the following Chrome permissions:</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Permission</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>activeTab</td>
+            <td>Access the current Wikipedia page to extract content for quiz generation</td>
+          </tr>
+          <tr>
+            <td>storage</td>
+            <td>Save your preferences (difficulty, question count) locally</td>
+          </tr>
+          <tr>
+            <td>tabs</td>
+            <td>Detect when you navigate to Wikipedia pages</td>
+          </tr>
+          <tr>
+            <td>alarms</td>
+            <td>Maintain server connection for optimal performance</td>
+          </tr>
+          <tr>
+            <td>host_permissions</td>
+            <td>Fetch article content from Wikipedia's API</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Changes to This Policy</h2>
+      <p>We may update this Privacy Policy from time to time. Any changes will be reflected by updating the "Last Updated" date at the top of this policy. We encourage you to review this Privacy Policy periodically.</p>
+    </section>
+
+    <section class="contact-section">
+      <h2>Contact Us</h2>
+      <p>If you have any questions about this Privacy Policy or WikiQuiz's practices:</p>
+      <div class="contact-links">
+        <a href="https://github.com/maksimyin" class="contact-link" target="_blank" rel="noopener">
+          <span>👤</span> Developer: Maksim Yin
+        </a>
+        <a href="https://github.com/maksimyin/WikiQuiz" class="contact-link" target="_blank" rel="noopener">
+          <span>📦</span> GitHub Repository
+        </a>
+        <a href="https://github.com/maksimyin/WikiQuiz/issues" class="contact-link" target="_blank" rel="noopener">
+          <span>🐛</span> Report Issues
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>WikiQuiz is open source. <a href="https://github.com/maksimyin/WikiQuiz" target="_blank" rel="noopener">Review our code</a> to verify our privacy practices.</p>
+    <p style="margin-top: 0.5rem;">This privacy policy is effective as of January 8, 2026.</p>
+  </footer>
+</body>
+</html>
+
